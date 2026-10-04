@@ -15,7 +15,7 @@
 │     PHASE 1      │     PHASE 2      │     PHASE 3      │     PHASE 4      │     PHASE 5      │      PHASE 6      │
 │  Dual-Wallet &   │ Instant Credit   │   Restaurant     │   Customer Web   │ Proximity Rider  │ Proof-of-Delivery │
 │ Escrow Contract  │  Card Gateway &  │ Partner Portal   │  Storefront &    │ Dispatch Engine  │  (Barcode/PIN) &  │
-│  Foundation (✅) │ Multi-Rail (✅)  │ & KDS (🚀 NEXT)  │  Live Tracking   │ & Barcode Scan   │ Multi-Disbursal   │
+│  Foundation (✅) │ Multi-Rail (✅)  │ & KDS (✅)       │ Live Track (🚀)  │ & Barcode Scan   │ Multi-Disbursal   │
 └──────────────────┴──────────────────┴──────────────────┴──────────────────┴──────────────────┴───────────────────┘
 ```
 
@@ -66,29 +66,36 @@
   * Automated unit tests in `oengo-api/test/payments.test.js` (6/6 tests passing in 63ms).
   * Go smart contract tests (`go test -count=1 -v ./...`) passing 100% in `contracts/escrow`.
   * Next.js 16.3.8 Turbopack build (`npm run build`) passing with zero TypeScript and ESLint errors.
-  * Pushed to GitHub repositories `oenexa/oengo-api` and `oenexa/oengo-web` on branch `main`.
 
 ---
 
-### Phase 3: Restaurant Partner Portal (`oengo-web/merchant`) (🚀 NEXT MILESTONE)
+### Phase 3: Restaurant Partner Portal & Kitchen Display System (✅ COMPLETED)
 *Goal: Empower food vendors to manage storefronts, menus, and incoming orders in real time.*
 
-* **Task 3.1: Merchant Dashboard & Onboarding**
-  * Restaurant profile setup (Logo, cuisine tags, delivery radius, preparation time).
-  * Web3 wallet & bank payout binding for instant daily revenue settlements.
-* **Task 3.2: Live Menu & Catalog Management**
-  * Category grouping (Starters, Mains, Drinks, Desserts).
-  * Real-time item availability toggles (In Stock / Sold Out).
-  * Dual-currency pricing (fiat display with live OEN conversion).
-* **Task 3.3: Live Kitchen Display System (KDS)**
-  * Real-time incoming order stream via WebSockets.
-  * Audio-visual chime for incoming card & crypto orders.
-  * One-tap actions: "Accept & Prep" (with 10/15/20 min ETA slider) or "Decline & Auto-Refund".
-  * Printable/displayable **Order Pickup Barcode** for the delivery courier.
+* **Task 3.1: Merchant Dashboard & Operational Controls (`oengo-web/merchant` & `oengo-api`)** ✅
+  * `GET /api/restaurants/:id`: Restaurant profile, operational status, and real-time revenue analytics (gross revenue, 95% merchant retention vs legacy 30% take rate, active tickets).
+  * `PUT /api/restaurants/:id`: Dynamic store operating toggle (`OPEN & ACCEPTING` vs `STORE CLOSED`) and preparation time adjustment.
+* **Task 3.2: Live Menu & Catalog Management (`/merchant` Tab 2)** ✅
+  * `GET /api/restaurants/:id/menu`: Categorized dishes (Pizza & Mains, Starters, Desserts, Beverages) with dual-currency pricing (EUR and live OEN conversion).
+  * `POST /api/restaurants/:id/menu`: Add new dish with name, price, category, prep time, description, and tags.
+  * `PUT /api/restaurants/:id/menu/:itemId`: Instant 1-tap **In Stock / Sold Out** toggle switch.
+  * `DELETE /api/restaurants/:id/menu/:itemId`: Remove dish from live menu.
+* **Task 3.3: Live Kitchen Display System (KDS) & Order Processing (`/merchant` Tab 1)** ✅
+  * Real-time kitchen ticket stream with status filtering (`All Active`, `New Orders 🔴`, `Cooking 👨‍🍳`, `Ready at Counter 📦`, `Delivered`).
+  * Interactive kitchen actions:
+    * "Accept & Cook" with selectable prep ETA presets (10m, 15m, 25m).
+    * "Mark Ready for Courier Pickup 📦" (transitions to `READY_FOR_PICKUP`).
+    * "Decline & 100% Auto-Refund Customer" (releases smart escrow).
+  * Audio chime notification toggle (`🔔 Chime Active` / `🔕 Muted`).
+* **Task 3.4: Courier Counter Barcode Station (`/merchant` Tab 3)** ✅
+  * Dedicated high-contrast scannable barcode modal with oversized `PKG-XXXXXX` token for couriers at the restaurant counter.
+* **Task 3.5: Automated Verification & Test Suite** ✅
+  * 11 unit tests in `oengo-api/test/restaurants.test.js` and `payments.test.js` passing 100% in 69ms.
+  * Next.js 16.3.8 Turbopack compilation passing with zero errors, generating `/merchant` route.
 
 ---
 
-### Phase 4: Customer Web Storefront & Live Tracking (`oengo-web`)
+### Phase 4: Customer Web Storefront & Live Tracking (`oengo-web`) (🚀 NEXT MILESTONE)
 *Goal: High-conversion, frictionless food ordering experience inspired by Uber Eats and Deliveroo.*
 
 * **Task 4.1: Restaurant Discovery & Geolocation**

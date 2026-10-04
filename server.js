@@ -48,6 +48,128 @@ const users = {
 
 const orders = {};
 
+// ── Restaurant Partner Profiles ─────────────────────────────────────────────
+const restaurants = {
+    'user_restaurant': {
+        id: 'user_restaurant',
+        name: 'Napoli Woodfire Pizza',
+        tagline: 'Authentic Neapolitan Pizza & Artisan Italian Delicacies',
+        cuisine: 'Italian, Woodfire Pizza, Artisan',
+        rating: 4.9,
+        reviewCount: 342,
+        address: 'Via Toledo 42, Napoli / Historic District',
+        isOpen: true,
+        prepEtaMinutes: 15,
+        deliveryRadiusKm: 5.5,
+        cryptoWalletAddress: '0xNapoli_Restaurant_MLDSA65',
+        fiatBalanceEUR: 1250.00
+    }
+};
+
+// ── Live Menu & Catalog Datastore ───────────────────────────────────────────
+const menus = {
+    'user_restaurant': [
+        {
+            id: 'menu_margherita',
+            category: 'Pizza & Mains',
+            name: 'Artisanal Margherita Pizza',
+            description: 'San Marzano D.O.P. tomatoes, fresh buffalo mozzarella, fragrant basil, extra virgin olive oil.',
+            priceEUR: 16.50,
+            priceOEN: '1.21',
+            inStock: true,
+            prepMinutes: 12,
+            badge: 'Bestseller'
+        },
+        {
+            id: 'menu_diavola',
+            category: 'Pizza & Mains',
+            name: 'Spicy Diavola Pizza',
+            description: 'Spianata Calabrese spicy salami, smoked provolone, chili flakes, organic tomato reduction.',
+            priceEUR: 18.00,
+            priceOEN: '1.32',
+            inStock: true,
+            prepMinutes: 14,
+            badge: 'Spicy'
+        },
+        {
+            id: 'menu_arancini',
+            category: 'Starters',
+            name: 'Truffle & Porcini Arancini',
+            description: 'Crispy golden saffron risotto balls stuffed with black truffle cream and melted fontina cheese.',
+            priceEUR: 12.00,
+            priceOEN: '0.88',
+            inStock: true,
+            prepMinutes: 8,
+            badge: 'Vegetarian'
+        },
+        {
+            id: 'menu_burrata',
+            category: 'Starters',
+            name: 'Pugliese Burrata & Heirloom Salad',
+            description: 'Creamy artisanal burrata, heirloom cherry tomatoes, aged balsamic glaze, toasted pine nuts.',
+            priceEUR: 14.00,
+            priceOEN: '1.03',
+            inStock: true,
+            prepMinutes: 6,
+            badge: 'Chef Special'
+        },
+        {
+            id: 'menu_tiramisu',
+            category: 'Desserts',
+            name: 'Classic Espresso Tiramisù',
+            description: 'Layered savoiardi soaked in single-origin espresso and Marsala, mascarpone cream, dark cocoa.',
+            priceEUR: 8.50,
+            priceOEN: '0.62',
+            inStock: true,
+            prepMinutes: 5,
+            badge: 'Homemade'
+        },
+        {
+            id: 'menu_sanpellegrino',
+            category: 'Beverages',
+            name: 'San Pellegrino Blood Orange',
+            description: 'Sparkling Italian citrus beverage crafted with sun-ripened Sicilian blood oranges.',
+            priceEUR: 4.50,
+            priceOEN: '0.33',
+            inStock: true,
+            prepMinutes: 2,
+            badge: 'Cold'
+        }
+    ]
+};
+
+// Seed an initial demo order for the kitchen KDS
+const seedOrder = {
+    id: 'ord_seed_101',
+    buyerId: 'user_customer',
+    buyerName: 'Alice Customer',
+    buyerAddress: '0xAlice_Customer_MLDSA65',
+    restaurantId: 'user_restaurant',
+    restaurantAddress: '0xNapoli_Restaurant_MLDSA65',
+    courierId: null,
+    courierAddress: null,
+    items: [
+        { name: 'Artisanal Margherita Pizza', qty: 1, price: 16.50 },
+        { name: 'Truffle & Porcini Arancini', qty: 1, price: 12.00 }
+    ],
+    amount: 28.50,
+    deliveryFee: 3.50,
+    tip: 2.00,
+    total: 34.00,
+    commissionPct: 5,
+    paymentMethod: 'CREDIT_CARD',
+    cardPayment: { brand: 'Visa', last4: '4242', transactionId: 'txn_seed_4242' },
+    paymentStatus: 'PAID',
+    status: 'AWAITING_RESTAURANT',
+    pickupBarcode: 'PKG-DEMO01',
+    pickupBarcodeHash: crypto.createHash('sha256').update('PKG-DEMO01').digest('hex'),
+    deliveryPin: '4821',
+    deliveryPinHash: crypto.createHash('sha256').update('4821').digest('hex'),
+    createdAt: new Date(Date.now() - 4 * 60000).toISOString(),
+    escrowLocked: true
+};
+orders[seedOrder.id] = seedOrder;
+
 // ── Commission Configuration (Manually Settable, Default: 5%) ────────────────
 let defaultCommissionPct = 5;
 const MIN_COMMISSION_PCT = 0;
@@ -356,7 +478,54 @@ app.post('/api/orders/:id/accept', (req, res) => {
 
     order.status = 'PREPARING';
     order.prepEtaMinutes = req.body.prepEtaMinutes || 15;
+    order.acceptedAt = new Date().toISOString();
     res.json({ success: true, message: 'Order accepted, kitchen preparing', order });
+});
+
+// POST /api/orders/:id/ready - Kitchen marks order ready for courier counter pickup
+app.post('/api/orders/:id/ready', (req, res) => {
+    const order = orders[req.params.id];
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+    if (order.status !== 'PREPARING') {
+        return res.status(400).json({ error: `Order cannot be marked ready from status ${order.status}` });
+    }
+
+    order.status = 'READY_FOR_PICKUP';
+    order.readyAt = new Date().toISOString();
+    res.json({
+        success: true,
+        message: 'Order is packed and ready for courier counter pickup',
+        pickupBarcode: order.pickupBarcode,
+        order
+    });
+});
+
+// POST /api/orders/:id/decline - Restaurant declines order & triggers automatic escrow refund
+app.post('/api/orders/:id/decline', (req, res) => {
+    const order = orders[req.params.id];
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+    if (order.status !== 'AWAITING_RESTAURANT' && order.status !== 'PREPARING') {
+        return res.status(400).json({ error: `Order cannot be declined from status ${order.status}` });
+    }
+
+    const { reason = 'Kitchen at peak capacity' } = req.body;
+    order.status = 'CANCELLED_BY_RESTAURANT';
+    order.cancelReason = reason;
+    order.escrowLocked = false;
+    order.refundStatus = 'REFUNDED_100_PERCENT';
+    order.cancelledAt = new Date().toISOString();
+
+    // If paid via digital wallet, refund immediately to user's wallet
+    if (order.paymentMethod === 'DIGITAL_WALLET') {
+        const buyer = users[order.buyerId];
+        if (buyer) buyer.digitalWallet.fiatBalanceEUR += order.total;
+    }
+
+    res.json({
+        success: true,
+        message: `Order declined by kitchen (${reason}). Escrow 100% refunded to customer.`,
+        order
+    });
 });
 
 // POST /api/orders/:id/assign-courier - Proximity dispatch assigns courier
@@ -379,7 +548,7 @@ app.post('/api/orders/:id/confirm-pickup', (req, res) => {
     const order = orders[req.params.id];
     if (!order) return res.status(404).json({ error: 'Order not found' });
 
-    if (order.status !== 'PREPARING') {
+    if (order.status !== 'PREPARING' && order.status !== 'READY_FOR_PICKUP') {
         return res.status(400).json({ error: `Order not ready for pickup (current: ${order.status})` });
     }
 
@@ -446,6 +615,181 @@ app.post('/api/orders/:id/confirm-delivery', async (req, res) => {
             customerLoyaltyPointsAwarded: Math.floor(order.amount)
         },
         order
+    });
+});
+
+// ── 3. RESTAURANT PARTNER PORTAL & MENU CATALOG APIS ─────────────────────────
+
+// GET /api/restaurants - List all partner restaurants
+app.get('/api/restaurants', (req, res) => {
+    res.json({
+        success: true,
+        count: Object.keys(restaurants).length,
+        restaurants: Object.values(restaurants)
+    });
+});
+
+// GET /api/restaurants/:id - Restaurant profile & live analytics
+app.get('/api/restaurants/:id', (req, res) => {
+    const restaurant = restaurants[req.params.id];
+    if (!restaurant) return res.status(404).json({ error: 'Restaurant not found' });
+
+    // Compute live operational stats
+    const restaurantOrders = Object.values(orders).filter(o => o.restaurantId === restaurant.id);
+    const activeOrders = restaurantOrders.filter(o => 
+        ['AWAITING_RESTAURANT', 'PREPARING', 'READY_FOR_PICKUP', 'IN_TRANSIT'].includes(o.status)
+    );
+    const deliveredOrders = restaurantOrders.filter(o => o.status === 'DELIVERED');
+    
+    // Revenue calculations
+    const grossDeliveredRevenueEUR = deliveredOrders.reduce((sum, o) => sum + (o.restaurantPayout || (o.amount * 0.95)), 0);
+    const activePipelineRevenueEUR = activeOrders.reduce((sum, o) => sum + (o.amount * ((100 - (o.commissionPct || defaultCommissionPct)) / 100)), 0);
+    const totalRevenueTodayEUR = parseFloat((grossDeliveredRevenueEUR + activePipelineRevenueEUR).toFixed(2));
+    
+    // Commission comparison: Oengo (5%) vs Legacy Delivery Apps (30%)
+    const commissionRetainedPct = 100 - defaultCommissionPct;
+    const legacyAppFeePct = 30;
+    const legacyLostRevenueEUR = parseFloat((totalRevenueTodayEUR * (legacyAppFeePct - defaultCommissionPct) / 100).toFixed(2));
+
+    res.json({
+        success: true,
+        restaurant: {
+            ...restaurant,
+            stats: {
+                totalOrdersCount: restaurantOrders.length,
+                activeOrdersCount: activeOrders.length,
+                deliveredOrdersCount: deliveredOrders.length,
+                grossRevenueTodayEUR: totalRevenueTodayEUR,
+                fiatBalanceEUR: restaurant.fiatBalanceEUR,
+                commissionRetainedPct,
+                platformCommissionPct: defaultCommissionPct,
+                legacyLostRevenueEUR,
+                avgPrepTimeMinutes: restaurant.prepEtaMinutes || 15
+            }
+        }
+    });
+});
+
+// PUT /api/restaurants/:id - Update restaurant operating status & prep times
+app.put('/api/restaurants/:id', (req, res) => {
+    const restaurant = restaurants[req.params.id];
+    if (!restaurant) return res.status(404).json({ error: 'Restaurant not found' });
+
+    const { isOpen, prepEtaMinutes, name, tagline, deliveryRadiusKm } = req.body;
+    if (typeof isOpen === 'boolean') restaurant.isOpen = isOpen;
+    if (typeof prepEtaMinutes === 'number') restaurant.prepEtaMinutes = prepEtaMinutes;
+    if (name) restaurant.name = name;
+    if (tagline) restaurant.tagline = tagline;
+    if (typeof deliveryRadiusKm === 'number') restaurant.deliveryRadiusKm = deliveryRadiusKm;
+
+    res.json({
+        success: true,
+        message: 'Restaurant profile updated successfully',
+        restaurant
+    });
+});
+
+// GET /api/restaurants/:id/menu - List all menu dishes & availability
+app.get('/api/restaurants/:id/menu', (req, res) => {
+    const menuList = menus[req.params.id] || [];
+    res.json({
+        success: true,
+        restaurantId: req.params.id,
+        count: menuList.length,
+        menu: menuList
+    });
+});
+
+// POST /api/restaurants/:id/menu - Add a new dish to the restaurant catalog
+app.post('/api/restaurants/:id/menu', (req, res) => {
+    const { name, category = 'Mains', description = '', priceEUR, prepMinutes = 15, badge = 'New' } = req.body;
+    if (!name || !priceEUR) {
+        return res.status(400).json({ error: 'Dish name and price (EUR) are required' });
+    }
+
+    if (!menus[req.params.id]) menus[req.params.id] = [];
+    const priceNum = parseFloat(priceEUR);
+    const newItem = {
+        id: `menu_${Date.now()}`,
+        category,
+        name: name.trim(),
+        description: description.trim(),
+        priceEUR: priceNum,
+        priceOEN: (priceNum / 13.60).toFixed(2), // 1 OEN ~= 13.60 EUR
+        inStock: true,
+        prepMinutes: parseInt(prepMinutes, 10) || 15,
+        badge
+    };
+
+    menus[req.params.id].push(newItem);
+    res.status(201).json({
+        success: true,
+        message: `Dish "${newItem.name}" added to catalog`,
+        item: newItem
+    });
+});
+
+// PUT /api/restaurants/:id/menu/:itemId - Update dish (availability toggle, price, details)
+app.put('/api/restaurants/:id/menu/:itemId', (req, res) => {
+    const menuList = menus[req.params.id];
+    if (!menuList) return res.status(404).json({ error: 'Restaurant menu not found' });
+
+    const item = menuList.find(i => i.id === req.params.itemId);
+    if (!item) return res.status(404).json({ error: 'Menu item not found' });
+
+    const { inStock, priceEUR, name, description, category, prepMinutes, badge } = req.body;
+    if (typeof inStock === 'boolean') item.inStock = inStock;
+    if (priceEUR !== undefined) {
+        const p = parseFloat(priceEUR);
+        item.priceEUR = p;
+        item.priceOEN = (p / 13.60).toFixed(2);
+    }
+    if (name) item.name = name.trim();
+    if (description !== undefined) item.description = description.trim();
+    if (category) item.category = category;
+    if (prepMinutes) item.prepMinutes = parseInt(prepMinutes, 10);
+    if (badge) item.badge = badge;
+
+    res.json({
+        success: true,
+        message: `Dish "${item.name}" updated`,
+        item
+    });
+});
+
+// DELETE /api/restaurants/:id/menu/:itemId - Remove dish from catalog
+app.delete('/api/restaurants/:id/menu/:itemId', (req, res) => {
+    const menuList = menus[req.params.id];
+    if (!menuList) return res.status(404).json({ error: 'Restaurant menu not found' });
+
+    const index = menuList.findIndex(i => i.id === req.params.itemId);
+    if (index === -1) return res.status(404).json({ error: 'Menu item not found' });
+
+    const removed = menuList.splice(index, 1)[0];
+    res.json({
+        success: true,
+        message: `Dish "${removed.name}" deleted from menu`,
+        deletedItemId: removed.id
+    });
+});
+
+// GET /api/restaurants/:id/orders - List live orders for kitchen KDS
+app.get('/api/restaurants/:id/orders', (req, res) => {
+    const { status } = req.query;
+    let list = Object.values(orders).filter(o => o.restaurantId === req.params.id);
+
+    if (status) {
+        const statuses = status.split(',').map(s => s.trim());
+        list = list.filter(o => statuses.includes(o.status));
+    }
+
+    // Sort newest first
+    list.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    res.json({
+        success: true,
+        count: list.length,
+        orders: list
     });
 });
 
