@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "Oengo Food Delivery Web3 Gateway and Relayer API",
   "main": "server.js",
+  "engines": {
+    "node": ">=24.0.0"
+  },
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js"
