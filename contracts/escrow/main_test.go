@@ -1,34 +1,164 @@
 package main
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 )
 
-func TestEscrowCall(t *testing.T) {
-	// 1. Test createOrder
-	createParams := `{"id":"ord_101","buyer":"0xBuyerAddr","seller":"0xRestaurantAddr","amount":500}`
-	res, err := Call("createOrder", createParams)
+func TestEscrowCompleteLifecycle(t *testing.T) {
+	orderID := "ord_test_001"
+	buyer := "0xBuyerAddress_MLDSA"
+	restaurant := "0xRestaurantAddress_MLDSA"
+	courier := "0xCourierAddress_MLDSA"
+	amount := uint64(1000)
+	fee := uint64(100)
+	tip := uint64(50)
+	pickupBarcode := "PKG-BARCODE-999"
+	deliveryPIN := "4821"
+
+	// 1. Create Order
+	createParams, _ := json.Marshal(map[string]interface{}{
+		"id":                  orderID,
+		"buyer":               buyer,
+		"restaurant":          restaurant,
+		"amount":              amount,
+		"delivery_fee":        fee,
+		"tip":                 tip,
+		"pickup_barcode":      pickupBarcode,
+		"delivery_secret_pin": deliveryPIN,
+	})
+	res, err := Call("createOrder", string(createParams))
 	if err != nil {
 		t.Fatalf("createOrder failed: %v", err)
 	}
-	if !strings.Contains(res, "ord_101 created") {
-		t.Errorf("unexpected createOrder response: %s", res)
+	if !strings.Contains(res, "1150 OEN locked") {
+		t.Errorf("expected 1150 total locked, got %s", res)
 	}
 
-	// 2. Test confirmDelivery with existing order
-	confirmParams := `{"id":"ord_101"}`
-	res, err = Call("confirmDelivery", confirmParams)
+	// 2. Accept Order by Restaurant
+	acceptParams, _ := json.Marshal(map[string]string{"id": orderID})
+	res, err = Call("acceptOrder", string(acceptParams))
+	if err != nil {
+		t.Fatalf("acceptOrder failed: %v", err)
+	}
+	if !strings.Contains(res, "now preparing") {
+		t.Errorf("unexpected acceptOrder response: %s", res)
+	}
+
+	// 3. Assign Courier
+	assignParams, _ := json.Marshal(map[string]string{
+		"id":      orderID,
+		"courier": courier,
+	})
+	res, err = Call("assignCourier", string(assignParams))
+	if err != nil {
+		t.Fatalf("assignCourier failed: %v", err)
+	}
+	if !strings.Contains(res, "Courier 0xCourierAddress_MLDSA assigned") {
+		t.Errorf("unexpected assignCourier response: %s", res)
+	}
+
+	// 4. Test Invalid Pickup Barcode Rejection
+	badPickupParams, _ := json.Marshal(map[string]string{
+		"id":             orderID,
+		"pickup_barcode": "WRONG-BARCODE",
+	})
+	_, err = Call("confirmPickup", string(badPickupParams))
+	if err == nil {
+		t.Fatalf("expected error on wrong pickup barcode, got nil")
+	}
+
+	// 5. Valid Pickup Barcode Scan
+	goodPickupParams, _ := json.Marshal(map[string]string{
+		"id":             orderID,
+		"pickup_barcode": pickupBarcode,
+	})
+	res, err = Call("confirmPickup", string(goodPickupParams))
+	if err != nil {
+		t.Fatalf("confirmPickup failed: %v", err)
+	}
+	if !strings.Contains(res, "IN_TRANSIT") {
+		t.Errorf("unexpected confirmPickup response: %s", res)
+	}
+
+	// 6. Test Invalid Delivery PIN Rejection
+	badDeliveryParams, _ := json.Marshal(map[string]string{
+		"id":                  orderID,
+		"delivery_proof_code": "0000",
+	})
+	_, err = Call("confirmDelivery", string(badDeliveryParams))
+	if err == nil {
+		t.Fatalf("expected error on wrong delivery PIN, got nil")
+	}
+
+	// 7. Valid Delivery Handover Verification (PIN: 4821)
+	goodDeliveryParams, _ := json.Marshal(map[string]string{
+		"id":                  orderID,
+		"delivery_proof_code": deliveryPIN,
+	})
+	res, err = Call("confirmDelivery", string(goodDeliveryParams))
 	if err != nil {
 		t.Fatalf("confirmDelivery failed: %v", err)
 	}
-	if !strings.Contains(res, "delivered, funds released") {
-		t.Errorf("unexpected confirmDelivery response: %s", res)
+	// 95% of 1000 = 950 to Restaurant.
+	// (1000 - 950) + 100 fee + 50 tip = 200 to Courier.
+	if !strings.Contains(res, "950 OEN to Restaurant") {
+		t.Errorf("expected 950 to Restaurant, got %s", res)
+	}
+	if !strings.Contains(res, "200 OEN to Courier") {
+		t.Errorf("expected 200 to Courier, got %s", res)
 	}
 
-	// 3. Test unknown method
-	_, err = Call("nonExistentMethod", `{}`)
-	if err == nil {
-		t.Fatalf("expected error on unknown method, got nil")
+	// 8. Query Order State
+	getParams, _ := json.Marshal(map[string]string{"id": orderID})
+	res, err = Call("getOrder", string(getParams))
+	if err != nil {
+		t.Fatalf("getOrder failed: %v", err)
+	}
+	var order EscrowOrder
+	if err := json.Unmarshal([]byte(res), &order); err != nil {
+		t.Fatalf("failed to parse getOrder JSON: %v", err)
+	}
+	if order.Status != StatusDelivered {
+		t.Errorf("expected status DELIVERED, got %s", order.Status)
+	}
+	if order.RestaurantPayout != 950 || order.CourierPayout != 200 {
+		t.Errorf("incorrect payouts: rest=%d, courier=%d", order.RestaurantPayout, order.CourierPayout)
+	}
+}
+
+func TestEscrowRefundFlow(t *testing.T) {
+	orderID := "ord_refund_002"
+	buyer := "0xBuyerRefund"
+	restaurant := "0xRestaurantRefund"
+
+	// Create Order
+	createParams, _ := json.Marshal(map[string]interface{}{
+		"id":                  orderID,
+		"buyer":               buyer,
+		"restaurant":          restaurant,
+		"amount":              uint64(500),
+		"delivery_fee":        uint64(50),
+		"tip":                 uint64(0),
+		"pickup_barcode":      "BAR123",
+		"delivery_secret_pin": "1234",
+	})
+	_, err := Call("createOrder", string(createParams))
+	if err != nil {
+		t.Fatalf("createOrder failed: %v", err)
+	}
+
+	// Refund Order
+	refundParams, _ := json.Marshal(map[string]string{
+		"id":     orderID,
+		"reason": "Restaurant out of stock",
+	})
+	res, err := Call("refundOrder", string(refundParams))
+	if err != nil {
+		t.Fatalf("refundOrder failed: %v", err)
+	}
+	if !strings.Contains(res, "refunded 100% (550 OEN)") {
+		t.Errorf("unexpected refund response: %s", res)
 	}
 }
