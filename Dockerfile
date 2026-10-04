@@ -20,6 +20,7 @@ ENV PORT=3001
 COPY --from=builder /app/node_modules ./node_modules
 COPY package*.json ./
 COPY server.js ./
+COPY src ./src
 COPY contracts ./contracts
 
 # Run as non-root user for container security
@@ -28,6 +29,6 @@ USER node
 EXPOSE 3001
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:3001/api/orders || exit 1
+  CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:3001/health || exit 1
 
 CMD ["node", "server.js"]
