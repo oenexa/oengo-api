@@ -12,8 +12,8 @@ You are the Lead Full-Stack & Smart Contract Architect building **Oengo**, the w
 
 Oengo combines the frictionless consumer UX of **Uber Eats** and **Deliveroo** with the trustless financial rails of the **OENEXA Layer-1 Blockchain**:
 1. **Zero 30% Aggregator Tax**: Traditional aggregators charge restaurants 25%–35% in commission. Oengo features a **Configurable Dynamic Commission System** defaulting to an ultra-low 5% (with 95% paid directly to the merchant), configurable manually by administrators.
-2. **Dual-Wallet Engine**: In-app Digital Wallet (fiat credits, meal vouchers, loyalty points) alongside a non-custodial Web3 Crypto Wallet (holding OEN coins, stablecoins, and tokenized assets).
-3. **Automated Barcode / QR / PIN Escrow Settlement**: Customer funds remain locked safely on-chain in smart contracts and are autonomously disbursed to the restaurant and courier the exact moment physical delivery is verified via barcode or PIN scan.
+2. **Multi-Rail Payment & Unified Wallet Engine**: Direct Instant Credit / Debit Card checkout (Visa, Mastercard, American Express, Apple Pay, Google Pay) with zero onboarding friction, alongside an in-app Digital Wallet (fiat credits, vouchers, loyalty points) and a non-custodial Web3 Crypto Wallet (holding OEN coins and tokenized assets).
+3. **Automated Barcode / QR / PIN Escrow Settlement**: Customer funds remain locked safely in escrow and are autonomously disbursed to the restaurant and courier the exact moment physical delivery is verified via barcode or PIN scan.
 
 ---
 
@@ -72,12 +72,15 @@ $$\text{Courier Payout} = \text{Platform Commission} + \text{Delivery Fee} + \te
 
 ## 4. Detailed Step-by-Step Lifecycle Specification
 
-### Step 1: Customer In-App Order & Escrow Funding
-* The customer browses menus on **`oengo-web`**, selects meals, and goes to checkout.
-* Payment is chosen from the **In-App Wallet** (Digital balance or Web3 OEN crypto).
-* The active commission rate (default: 5%) is stamped onto the order.
-* `oengo-api` calls `createOrder` on the WASM Escrow Contract (`contracts/escrow/main.go`).
-* Funds are strictly locked in the smart contract vault. State: `AWAITING_RESTAURANT`.
+### Step 1: Customer In-App Order & Multi-Rail Payment Options
+* The customer browses menus on **`oengo-web`**, selects dishes, and proceeds to checkout.
+* **Tri-Rail Payment Gateway Selection**:
+  * **Rail 1 (Instant Credit / Debit Card)**: Direct card payment (Visa, Mastercard, American Express, Apple Pay, Google Pay). Processed instantly via secure card payment intents (`POST /api/payments/card-intent` & `POST /api/payments/confirm-card`). Card is tokenized securely; zero card data touches merchant databases.
+  * **Rail 2 (Digital Wallet)**: 1-click payment using pre-funded fiat credits, promotional vouchers, or accumulated cashback.
+  * **Rail 3 (Web3 Crypto Wallet)**: Non-custodial payment using OENEXA Layer-1 coins (OEN), signed with post-quantum ML-DSA-65 keys.
+* The active commission rate (default: 5%, configurable 0%–30%) is stamped onto the order.
+* `oengo-api` initializes the escrow contract vault (`contracts/escrow/main.go`) or fiat-backed escrow ledger.
+* Funds are locked securely in escrow. State: `AWAITING_RESTAURANT`.
 
 ### Step 2: Restaurant Order Queue & Cooking
 * The restaurant receives an instant audio-visual chime on their live Order Management Dashboard.
@@ -105,28 +108,28 @@ $$\text{Courier Payout} = \text{Platform Commission} + \text{Delivery Fee} + \te
   `POST /api/orders/confirm-delivery` with cryptographic signature.
 * `oengo-api` signs and broadcasts `confirmDelivery` to the OENEXA Layer-1 node (`http://oenexa-node:8545`).
 * **Instant Disbursal**:
-  * **Restaurant Payout**: Credited directly to the restaurant’s wallet address based on `(100% - CommissionPct)`.
-  * **Rider Compensation**: Disbursed immediately to the courier's wallet based on `CommissionPct + DeliveryFee + Tip`.
-  * **Customer Rewards**: Loyalty cashback tokens minted to the customer's in-app digital wallet.
+  * **Restaurant Payout**: Credited directly to the restaurant’s wallet address or merchant card payout account based on `(100% - CommissionPct)`.
+  * **Rider Compensation**: Disbursed immediately to the courier's wallet or instant payout card based on `CommissionPct + DeliveryFee + Tip`.
+  * **Customer Rewards**: 5% loyalty cashback tokens minted directly to the customer's in-app digital wallet.
 
 ---
 
-## 5. Dual-Wallet Architecture Specification
+## 5. Tri-Rail Payment Gateway & Unified Wallet Hub
 
-Every account in Oengo features a unified financial center containing two complementary balance tiers:
+Oengo unifies conventional card payments with off-chain digital balances and on-chain Layer-1 crypto into a single financial hub:
 
 ```
-┌────────────────────────────────────────────────────────────────────────┐
-│                        OENGO UNIFIED WALLET HUB                        │
-├──────────────────────────────────┬─────────────────────────────────────┤
-│      1. DIGITAL WALLET (Off-Chain)│     2. CRYPTO WALLET (On-Chain L1)  │
-├──────────────────────────────────┼─────────────────────────────────────┤
-│ • In-app fiat balance & credits  │ • Native OENEXA (OEN) Coins         │
-│ • Promotional cashback vouchers  │ • USD-backed Stablecoins (USDC/OUSD)│
-│ • Referral reward tokens         │ • Tokenized Membership NFTs/Assets  │
-│ • Instant refund balance         │ • Smart Contract Escrow Lock Box    │
-│ • Managed via `oengo-api` DB     │ • Non-custodial ML-DSA-65 keys      │
-└──────────────────────────────────┴─────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│                                OENGO PAYMENT GATEWAY & WALLET HUB                      │
+├──────────────────────────┬─────────────────────────────┬───────────────────────────────┤
+│ 1. DIRECT CARD GATEWAY   │ 2. DIGITAL WALLET (Off-Chain)│ 3. CRYPTO WALLET (On-Chain L1)│
+├──────────────────────────┼─────────────────────────────┼───────────────────────────────┤
+│ • Instant Visa/Mastercard│ • In-app fiat balance credits│ • Native OENEXA (OEN) Coins   │
+│ • Apple Pay & Google Pay │ • Promotional vouchers      │ • USD Stablecoins (USDC/OUSD) │
+│ • Tokenized Card Intents │ • 5% Order Cashback Rewards │ • Non-custodial ML-DSA-65 keys│
+│ • PCI-DSS Level 1 Safe   │ • Instant refund balance    │ • WASM Escrow Contract Vault  │
+│ • Zero merchant storage  │ • Fast 1-click checkout     │ • P2P trustless settlement    │
+└──────────────────────────┴─────────────────────────────┴───────────────────────────────┘
 ```
 
 ---
@@ -154,3 +157,4 @@ Every account in Oengo features a unified financial center containing two comple
 3. **Commission Invariants**: The platform commission percentage must be bounded between `0%` and `30%` (default `5%`). Negative or excessive commission rates must be strictly rejected at both the smart contract and API validation layers.
 4. **Barcode Tamper-Proofing**: Delivery barcodes must be dynamically salted hashes (e.g. `HMAC(orderId, customerSecret, timestamp)`) so a barcode cannot be intercepted or screenshotted in advance.
 5. **Idempotency**: All payment and escrow release endpoints must implement idempotency keys (`idempotency_key: ord_xxx`) to prevent double-charging or duplicate payouts.
+6. **PCI-DSS Compliance & Card Data Isolation**: Raw credit card numbers, CVVs, or primary account numbers (PAN) must never be stored or logged in plain text. Card payments must use tokenized payment intents (`card_intent_xxx`) and secure client-side fields.

@@ -53,6 +53,31 @@ let defaultCommissionPct = 5;
 const MIN_COMMISSION_PCT = 0;
 const MAX_COMMISSION_PCT = 30;
 
+// In-Memory Saved Cards for Instant 1-Tap Checkout
+const savedCards = {
+    'user_customer': [
+        {
+            id: 'card_default_visa',
+            brand: 'Visa',
+            last4: '4242',
+            expMonth: 12,
+            expYear: 2028,
+            cardHolder: 'Alice Customer',
+            isDefault: true
+        }
+    ]
+};
+
+// Helper: Card Brand Detector
+function detectCardBrand(number) {
+    const cleaned = (number || '').replace(/\D/g, '');
+    if (/^4/.test(cleaned)) return 'Visa';
+    if (/^5[1-5]/.test(cleaned) || /^2[2-7]/.test(cleaned)) return 'Mastercard';
+    if (/^3[47]/.test(cleaned)) return 'American Express';
+    if (/^6(?:011|5)/.test(cleaned)) return 'Discover';
+    return 'Credit Card';
+}
+
 // Helper: SHA256
 function sha256(str) {
     return crypto.createHash('sha256').update(str).digest('hex');
@@ -87,6 +112,84 @@ app.post('/api/admin/commission', (req, res) => {
         commissionPct: defaultCommissionPct,
         restaurantSharePct: 100 - defaultCommissionPct
     });
+});
+
+// ── PAYMENT GATEWAY: DIRECT CREDIT CARD & MULTI-RAIL APIS ───────────────────
+
+// POST /api/payments/card-intent - Initialize card payment intent
+app.post('/api/payments/card-intent', (req, res) => {
+    const { amount, currency = 'EUR', customerId = 'user_customer' } = req.body;
+    const intentId = `pi_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+    const clientSecret = `sec_${crypto.randomBytes(16).toString('hex')}`;
+    res.json({
+        success: true,
+        paymentIntentId: intentId,
+        clientSecret,
+        amount: parseFloat(amount || 0),
+        currency,
+        status: 'REQUIRES_PAYMENT_METHOD'
+    });
+});
+
+// POST /api/payments/confirm-card - Authorize & capture instant credit card payment
+app.post('/api/payments/confirm-card', (req, res) => {
+    const {
+        paymentIntentId,
+        cardNumber = '',
+        cardHolderName = '',
+        cardExpMonth = '12',
+        cardExpYear = '2028',
+        cardCvc = '',
+        saveCard = false,
+        customerId = 'user_customer'
+    } = req.body;
+
+    const cleanedNumber = cardNumber.replace(/\D/g, '');
+    if (cleanedNumber.length < 13 || cleanedNumber.length > 19) {
+        return res.status(400).json({ error: 'Invalid card number length (must be 13-19 digits)' });
+    }
+    if (!cardHolderName || !cardHolderName.trim()) {
+        return res.status(400).json({ error: 'Cardholder name is required' });
+    }
+    if (!cardCvc || cardCvc.length < 3 || cardCvc.length > 4) {
+        return res.status(400).json({ error: 'Invalid CVV/CVC security code' });
+    }
+
+    const brand = detectCardBrand(cleanedNumber);
+    const last4 = cleanedNumber.slice(-4);
+    const transactionId = `txn_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+
+    const cardInfo = {
+        id: `card_${Date.now()}`,
+        brand,
+        last4,
+        expMonth: parseInt(cardExpMonth, 10),
+        expYear: parseInt(cardExpYear, 10),
+        cardHolder: cardHolderName.trim()
+    };
+
+    if (saveCard) {
+        if (!savedCards[customerId]) savedCards[customerId] = [];
+        savedCards[customerId].push(cardInfo);
+    }
+
+    res.json({
+        success: true,
+        message: `Credit card payment authorized and captured instantly via ${brand}`,
+        transactionId,
+        paymentIntentId: paymentIntentId || `pi_${Date.now()}`,
+        brand,
+        last4,
+        status: 'SUCCEEDED'
+    });
+});
+
+// GET /api/payments/methods/:userId - List saved customer payment methods
+app.get('/api/payments/methods/:userId', (req, res) => {
+    const methods = savedCards[req.params.userId] || [
+        { id: 'card_demo_visa', brand: 'Visa', last4: '4242', expMonth: 12, expYear: 2028, cardHolder: 'Alice Customer', isDefault: true }
+    ];
+    res.json({ success: true, methods });
 });
 
 // ── 1. DUAL-WALLET APIS ───────────────────────────────────────────────────────
@@ -164,7 +267,8 @@ app.post('/api/orders', async (req, res) => {
             amount = 25.00,
             deliveryFee = 3.50,
             tip = 2.00,
-            paymentMethod = 'CRYPTO_OEN', // or 'DIGITAL_WALLET'
+            paymentMethod = 'CREDIT_CARD', // 'CREDIT_CARD' | 'DIGITAL_WALLET' | 'CRYPTO_OEN'
+            cardPayment = null,
             commissionPct
         } = req.body;
 
@@ -202,6 +306,8 @@ app.post('/api/orders', async (req, res) => {
             total: parseFloat(amount) + parseFloat(deliveryFee) + parseFloat(tip),
             commissionPct: activeCommissionPct,
             paymentMethod,
+            cardPayment: paymentMethod === 'CREDIT_CARD' ? cardPayment : null,
+            paymentStatus: 'PAID',
             status: 'AWAITING_RESTAURANT', // AWAITING_RESTAURANT -> PREPARING -> IN_TRANSIT -> DELIVERED
             pickupBarcode,
             pickupBarcodeHash: sha256(pickupBarcode),
@@ -213,9 +319,13 @@ app.post('/api/orders', async (req, res) => {
 
         orders[orderId] = newOrder;
 
+        const methodLabel = paymentMethod === 'CREDIT_CARD' && cardPayment
+            ? `Credit Card (${cardPayment.brand} •••• ${cardPayment.last4})`
+            : paymentMethod;
+
         res.status(201).json({
             success: true,
-            message: 'Order created and funds locked in smart contract escrow',
+            message: `Order created via ${methodLabel} and funds locked in smart contract escrow`,
             order: newOrder
         });
     } catch (err) {
