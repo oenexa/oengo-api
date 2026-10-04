@@ -15,7 +15,7 @@
 │     PHASE 1      │     PHASE 2      │     PHASE 3      │     PHASE 4      │     PHASE 5      │      PHASE 6      │
 │  Dual-Wallet &   │ Instant Credit   │   Restaurant     │   Customer Web   │ Proximity Rider  │ Proof-of-Delivery │
 │ Escrow Contract  │  Card Gateway &  │ Partner Portal   │  Storefront &    │ Dispatch Engine  │  (Barcode/PIN) &  │
-│  Foundation (✅) │ Multi-Rail (✅)  │ & KDS (✅)       │ Live Track (🚀)  │ & Barcode Scan   │ Multi-Disbursal   │
+│  Foundation (✅) │ Multi-Rail (✅)  │ & KDS (✅)       │ Live Map (✅)    │ & Scan (🚀 NEXT) │ Multi-Disbursal   │
 └──────────────────┴──────────────────┴──────────────────┴──────────────────┴──────────────────┴───────────────────┘
 ```
 
@@ -76,7 +76,7 @@
   * `GET /api/restaurants/:id`: Restaurant profile, operational status, and real-time revenue analytics (gross revenue, 95% merchant retention vs legacy 30% take rate, active tickets).
   * `PUT /api/restaurants/:id`: Dynamic store operating toggle (`OPEN & ACCEPTING` vs `STORE CLOSED`) and preparation time adjustment.
 * **Task 3.2: Live Menu & Catalog Management (`/merchant` Tab 2)** ✅
-  * `GET /api/restaurants/:id/menu`: Categorized dishes (Pizza & Mains, Starters, Desserts, Beverages) with dual-currency pricing (EUR and live OEN conversion).
+  * `GET /api/restaurants/:id/menu`: Categorized dishes with dual-currency pricing (EUR and live OEN conversion).
   * `POST /api/restaurants/:id/menu`: Add new dish with name, price, category, prep time, description, and tags.
   * `PUT /api/restaurants/:id/menu/:itemId`: Instant 1-tap **In Stock / Sold Out** toggle switch.
   * `DELETE /api/restaurants/:id/menu/:itemId`: Remove dish from live menu.
@@ -90,27 +90,35 @@
 * **Task 3.4: Courier Counter Barcode Station (`/merchant` Tab 3)** ✅
   * Dedicated high-contrast scannable barcode modal with oversized `PKG-XXXXXX` token for couriers at the restaurant counter.
 * **Task 3.5: Automated Verification & Test Suite** ✅
-  * 11 unit tests in `oengo-api/test/restaurants.test.js` and `payments.test.js` passing 100% in 69ms.
+  * 11 unit tests in `oengo-api/test/restaurants.test.js` and `payments.test.js` passing 100%.
   * Next.js 16.3.8 Turbopack compilation passing with zero errors, generating `/merchant` route.
 
 ---
 
-### Phase 4: Customer Web Storefront & Live Tracking (`oengo-web`) (🚀 NEXT MILESTONE)
+### Phase 4: Customer Web Storefront & Live Courier Tracking Map (✅ COMPLETED)
 *Goal: High-conversion, frictionless food ordering experience inspired by Uber Eats and Deliveroo.*
 
-* **Task 4.1: Restaurant Discovery & Geolocation**
-  * Address entry with automatic geolocation and delivery fee estimation.
-  * Filtering by cuisine, dietary needs, ratings, and preparation speed.
-* **Task 4.2: Interactive Menu & Cart Experience**
-  * Meal customization modal (sizes, spice levels, optional add-ons).
-  * Sticky cart summary with subtotal, dynamic delivery fee, and carbon-neutral delivery option.
-* **Task 4.3: Real-Time Order Tracking & Map**
-  * Visual stepper: `Order Placed` ➡️ `Cooking` ➡️ `On the Way` ➡️ `Arrived`.
-  * Mapbox / Leaflet animated delivery courier route.
+* **Task 4.1: Multi-Restaurant Discovery & Geolocation (`oengo-web` & `oengo-api`)** ✅
+  * Live address geolocation bar (`📍 Delivering to: Piazza del Plebiscito 1, Napoli`).
+  * Cuisine filtering pills: `All Cuisines`, `🍕 Pizza & Italian`, `🍔 Gourmet Burgers`, `🍣 Japanese & Sushi`, `🥗 Healthy & Vegan`.
+  * Dynamic restaurant search query matching name, cuisine, and culinary tags.
+  * Multi-restaurant directory featuring 4 distinct partner restaurants with ratings, review counts, delivery fees, and minimum orders.
+* **Task 4.2: Interactive Menu, Meal Customization & Sticky Cart** ✅
+  * Restaurant storefront banner displaying ratings, prep times, and 95% merchant revenue guarantee badge.
+  * Dish cards with badges (`Bestseller`, `Chef Special`, `Spicy`, `Vegetarian`, `Organic`) and dual-currency pricing (EUR and OEN).
+  * Sticky interactive cart with quantity increments (`+` / `-`), tip selector (`€0`, `€1`, `€2`, `€3.50`), carbon-neutral bicycle delivery toggle, and configurable platform commission (default 5%).
+* **Task 4.3: Real-Time Order Tracking & Live Vector Map Widget** ✅
+  * 5-Stage visual progress stepper (`Order Placed 🔒` ➡️ `Cooking 👨‍🍳` ➡️ `Packed 📦` ➡️ `On the Way 🛵` ➡️ `Delivered 🎉`).
+  * High-contrast vector dark map of Naples displaying restaurant pin (Via Toledo), animated courier vehicle (Bob Rider), customer destination (Piazza del Plebiscito), and glowing street route polyline.
+  * Real-time ETA countdown and courier contact pill (`Bob Rider • Electric Bike 🚲 • 4.98 ⭐`).
+  * Doorstep Handover Verification Box displaying the Customer Delivery PIN (`4821`) and Pickup Barcode (`PKG-XXXXXX`).
+* **Task 4.4: Automated Test Suite & Quality Verification** ✅
+  * 15 automated unit tests passing across `payments.test.js`, `restaurants.test.js`, and `storefront.test.js`.
+  * Next.js 16.3.8 Turbopack build passing with zero errors.
 
 ---
 
-### Phase 5: Proximity Dispatch & Courier Workflow (`oengo-web/rider` & `oengo-api`)
+### Phase 5: Proximity Dispatch & Courier Workflow (`oengo-web/rider` & `oengo-api`) (🚀 NEXT MILESTONE)
 *Goal: Intelligent, low-latency courier matching and restaurant pickup verification.*
 
 * **Task 5.1: Redis Geospatial Courier Matching**

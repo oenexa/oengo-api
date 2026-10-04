@@ -54,15 +54,69 @@ const restaurants = {
         id: 'user_restaurant',
         name: 'Napoli Woodfire Pizza',
         tagline: 'Authentic Neapolitan Pizza & Artisan Italian Delicacies',
-        cuisine: 'Italian, Woodfire Pizza, Artisan',
+        cuisine: 'Italian, Pizza, Artisan',
         rating: 4.9,
         reviewCount: 342,
         address: 'Via Toledo 42, Napoli / Historic District',
+        icon: '🍕',
         isOpen: true,
         prepEtaMinutes: 15,
+        deliveryFeeEUR: 2.50,
+        minOrderEUR: 15.00,
         deliveryRadiusKm: 5.5,
         cryptoWalletAddress: '0xNapoli_Restaurant_MLDSA65',
         fiatBalanceEUR: 1250.00
+    },
+    'rest_burger': {
+        id: 'rest_burger',
+        name: 'Smash & Co. Gourmet Burgers',
+        tagline: 'Double Smashed Dry-Aged Angus & Loaded Brioche',
+        cuisine: 'American, Burgers, Craft',
+        rating: 4.8,
+        reviewCount: 218,
+        address: 'Corso Umberto I 118, Napoli',
+        icon: '🍔',
+        isOpen: true,
+        prepEtaMinutes: 20,
+        deliveryFeeEUR: 2.99,
+        minOrderEUR: 12.00,
+        deliveryRadiusKm: 6.0,
+        cryptoWalletAddress: '0xSmashBurger_MLDSA65',
+        fiatBalanceEUR: 890.00
+    },
+    'rest_sushi': {
+        id: 'rest_sushi',
+        name: 'Tokyo Bloom Omakase & Bento',
+        tagline: 'Sustainably Sourced Sashimi, Nigiri & Crispy Gyoza',
+        cuisine: 'Japanese, Sushi, Asian',
+        rating: 4.9,
+        reviewCount: 451,
+        address: 'Via Chiaia 84, Napoli',
+        icon: '🍣',
+        isOpen: true,
+        prepEtaMinutes: 25,
+        deliveryFeeEUR: 3.50,
+        minOrderEUR: 20.00,
+        deliveryRadiusKm: 7.0,
+        cryptoWalletAddress: '0xTokyoBloom_MLDSA65',
+        fiatBalanceEUR: 2140.00
+    },
+    'rest_green': {
+        id: 'rest_green',
+        name: 'Verde Organic Bowls & Cold Press',
+        tagline: 'Superfood Macro Bowls, Wild Greens & Fresh Smoothies',
+        cuisine: 'Healthy, Vegan, Organic',
+        rating: 4.7,
+        reviewCount: 129,
+        address: 'Piazza dei Martiri 16, Napoli',
+        icon: '🥗',
+        isOpen: true,
+        prepEtaMinutes: 12,
+        deliveryFeeEUR: 1.99,
+        minOrderEUR: 10.00,
+        deliveryRadiusKm: 4.5,
+        cryptoWalletAddress: '0xVerdeOrganic_MLDSA65',
+        fiatBalanceEUR: 620.00
     }
 };
 
@@ -134,6 +188,100 @@ const menus = {
             inStock: true,
             prepMinutes: 2,
             badge: 'Cold'
+        }
+    ],
+    'rest_burger': [
+        {
+            id: 'menu_smash_truffle',
+            category: 'Burgers',
+            name: 'Double Truffle Smash Burger',
+            description: 'Two 100g dry-aged Angus patties, double American cheese, black truffle aioli, grilled onions, brioche.',
+            priceEUR: 15.50,
+            priceOEN: '1.14',
+            inStock: true,
+            prepMinutes: 12,
+            badge: 'Bestseller'
+        },
+        {
+            id: 'menu_bacon_bbq',
+            category: 'Burgers',
+            name: 'Smoked Bacon BBQ Burger',
+            description: 'Crispy applewood smoked bacon, aged cheddar, bourbon BBQ glaze, house pickles.',
+            priceEUR: 14.50,
+            priceOEN: '1.07',
+            inStock: true,
+            prepMinutes: 10,
+            badge: 'Popular'
+        },
+        {
+            id: 'menu_parm_fries',
+            category: 'Sides',
+            name: 'Parmesan & Rosemary Fries',
+            description: 'Triple-cooked rustic skin-on potatoes dusted with 24-month Parmigiano Reggiano and fresh rosemary.',
+            priceEUR: 6.00,
+            priceOEN: '0.44',
+            inStock: true,
+            prepMinutes: 6,
+            badge: 'Crispy'
+        }
+    ],
+    'rest_sushi': [
+        {
+            id: 'menu_omakase_set',
+            category: 'Nigiri & Sets',
+            name: 'Chef Omakase 12-Piece Set',
+            description: 'Otoro fatty tuna, Scottish salmon, yellowtail hamachi, Hokkaido scallop, sweet unagi eel.',
+            priceEUR: 28.00,
+            priceOEN: '2.06',
+            inStock: true,
+            prepMinutes: 18,
+            badge: 'Chef Special'
+        },
+        {
+            id: 'menu_dragon_roll',
+            category: 'Special Rolls',
+            name: 'Crunchy Tiger Dragon Roll',
+            description: 'Tempura black tiger prawn, Hass avocado, cucumber, unagi reduction, flying fish tobiko.',
+            priceEUR: 16.00,
+            priceOEN: '1.18',
+            inStock: true,
+            prepMinutes: 14,
+            badge: 'Bestseller'
+        },
+        {
+            id: 'menu_gyoza',
+            category: 'Starters',
+            name: 'Crispy Duck & Ponzu Gyoza',
+            description: 'Pan-seared handmade dumplings filled with confit duck and ginger scallion, citrus ponzu dip.',
+            priceEUR: 9.50,
+            priceOEN: '0.70',
+            inStock: true,
+            prepMinutes: 8,
+            badge: 'Hot'
+        }
+    ],
+    'rest_green': [
+        {
+            id: 'menu_bali_bowl',
+            category: 'Superfood Bowls',
+            name: 'Bali Sunset Macro Bowl',
+            description: 'Tri-color organic quinoa, Hass avocado, edamame, roasted sweet potato, toasted nori, tahini miso.',
+            priceEUR: 13.50,
+            priceOEN: '0.99',
+            inStock: true,
+            prepMinutes: 8,
+            badge: 'Organic'
+        },
+        {
+            id: 'menu_green_cleanse',
+            category: 'Cold Press',
+            name: 'Immunity Cold Press Elixir',
+            description: 'Cold-pressed Tuscan kale, Granny Smith apple, fresh ginger root, Meyer lemon, organic celery.',
+            priceEUR: 6.50,
+            priceOEN: '0.48',
+            inStock: true,
+            prepMinutes: 3,
+            badge: 'Detox'
         }
     ]
 };
@@ -620,12 +768,29 @@ app.post('/api/orders/:id/confirm-delivery', async (req, res) => {
 
 // ── 3. RESTAURANT PARTNER PORTAL & MENU CATALOG APIS ─────────────────────────
 
-// GET /api/restaurants - List all partner restaurants
+// GET /api/restaurants - List all partner restaurants (supports ?cuisine=... and ?search=...)
 app.get('/api/restaurants', (req, res) => {
+    const { cuisine, search } = req.query;
+    let list = Object.values(restaurants);
+
+    if (cuisine && cuisine !== 'ALL') {
+        const cLower = cuisine.toLowerCase();
+        list = list.filter(r => r.cuisine.toLowerCase().includes(cLower));
+    }
+
+    if (search) {
+        const sLower = search.toLowerCase();
+        list = list.filter(r => 
+            r.name.toLowerCase().includes(sLower) || 
+            r.cuisine.toLowerCase().includes(sLower) ||
+            r.tagline.toLowerCase().includes(sLower)
+        );
+    }
+
     res.json({
         success: true,
-        count: Object.keys(restaurants).length,
-        restaurants: Object.values(restaurants)
+        count: list.length,
+        restaurants: list
     });
 });
 
@@ -790,6 +955,79 @@ app.get('/api/restaurants/:id/orders', (req, res) => {
         success: true,
         count: list.length,
         orders: list
+    });
+});
+
+// ── 4. CUSTOMER STOREFRONT & TRACKING APIS ──────────────────────────
+
+// POST /api/delivery/estimate - Calculate delivery fee and ETA based on address
+app.post('/api/delivery/estimate', (req, res) => {
+    const { restaurantId = 'user_restaurant', address = 'Piazza del Plebiscito 1, Napoli' } = req.body;
+    const rest = restaurants[restaurantId] || restaurants['user_restaurant'];
+
+    const baseFee = rest.deliveryFeeEUR || 2.50;
+    const distanceKm = 1.8;
+    const etaMins = (rest.prepEtaMinutes || 15) + 12;
+
+    res.json({
+        success: true,
+        restaurantId: rest.id,
+        restaurantName: rest.name,
+        customerAddress: address,
+        distanceKm,
+        estimatedDurationMins: etaMins,
+        deliveryFeeEUR: baseFee,
+        deliveryFeeOEN: (baseFee / 13.60).toFixed(2),
+        freeDeliveryThresholdEUR: 35.00
+    });
+});
+
+// GET /api/orders/:id/track - Live courier GPS route & visual tracking telemetry
+app.get('/api/orders/:id/track', (req, res) => {
+    const order = orders[req.params.id];
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+
+    const rest = restaurants[order.restaurantId] || restaurants['user_restaurant'];
+    const stages = {
+        'AWAITING_RESTAURANT': { percent: 15, step: 1, title: 'Order Received & Escrow Secured', etaMinutes: 28 },
+        'PREPARING': { percent: 45, step: 2, title: 'Kitchen Preparing Your Meal', etaMinutes: order.prepEtaMinutes || 18 },
+        'READY_FOR_PICKUP': { percent: 65, step: 3, title: 'Food Packed, Courier Arrived at Counter', etaMinutes: 12 },
+        'IN_TRANSIT': { percent: 85, step: 4, title: 'Courier on the Way to Your Doorstep', etaMinutes: 6 },
+        'DELIVERED': { percent: 100, step: 5, title: 'Delivered & Escrow Settled', etaMinutes: 0 },
+        'CANCELLED_BY_RESTAURANT': { percent: 0, step: 0, title: 'Order Cancelled & 100% Refunded', etaMinutes: 0 }
+    };
+
+    const stageInfo = stages[order.status] || stages['AWAITING_RESTAURANT'];
+
+    // Simulated high-precision coordinates for map visualization in Naples
+    const restCoords = { lat: 40.8401, lng: 14.2497, name: rest.name, address: rest.address };
+    const customerCoords = { lat: 40.8359, lng: 14.2488, address: 'Piazza del Plebiscito 1, Napoli' };
+    
+    let courierCoords = null;
+    if (order.status === 'IN_TRANSIT') {
+        courierCoords = { lat: 40.8380, lng: 14.2492, heading: 'South', riderName: 'Bob Rider', vehicle: 'Electric Bicycle 🚲' };
+    } else if (order.status === 'READY_FOR_PICKUP' || order.status === 'PREPARING') {
+        courierCoords = { lat: 40.8403, lng: 14.2499, heading: 'At Restaurant Counter', riderName: 'Bob Rider', vehicle: 'Electric Bicycle 🚲' };
+    }
+
+    res.json({
+        success: true,
+        orderId: order.id,
+        status: order.status,
+        progressPercent: stageInfo.percent,
+        currentStep: stageInfo.step,
+        statusTitle: stageInfo.title,
+        etaMinutes: stageInfo.etaMinutes,
+        deliveryPin: order.deliveryPin,
+        pickupBarcode: order.pickupBarcode,
+        restaurant: restCoords,
+        customer: customerCoords,
+        courier: courierCoords,
+        escrowLocked: order.escrowLocked,
+        paymentMethod: order.paymentMethod,
+        cardPayment: order.cardPayment,
+        total: order.total,
+        items: order.items
     });
 });
 
