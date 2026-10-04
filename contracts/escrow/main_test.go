@@ -162,3 +162,118 @@ func TestEscrowRefundFlow(t *testing.T) {
 		t.Errorf("unexpected refund response: %s", res)
 	}
 }
+
+func TestEscrowConfigurableCommission(t *testing.T) {
+	// 1. Test Rejection of Excessive Commission (> 30%)
+	badRateParams, _ := json.Marshal(map[string]uint64{"rate_pct": 35})
+	_, err := Call("setCommissionRate", string(badRateParams))
+	if err == nil {
+		t.Fatalf("expected error when setting commission rate > 30%%, got nil")
+	}
+
+	// 2. Test Setting Valid Global Commission Rate (e.g. 10%)
+	goodRateParams, _ := json.Marshal(map[string]uint64{"rate_pct": 10})
+	res, err := Call("setCommissionRate", string(goodRateParams))
+	if err != nil {
+		t.Fatalf("setCommissionRate failed: %v", err)
+	}
+	if !strings.Contains(res, "updated to 10%") {
+		t.Errorf("unexpected setCommissionRate response: %s", res)
+	}
+
+	// 3. Query getCommissionRate
+	res, err = Call("getCommissionRate", "{}")
+	if err != nil {
+		t.Fatalf("getCommissionRate failed: %v", err)
+	}
+	if !strings.Contains(res, `"commission_rate_pct":10`) {
+		t.Errorf("expected 10%% commission in getCommissionRate, got %s", res)
+	}
+
+	// 4. Create Order using Global 10% Commission
+	orderID := "ord_comm_10"
+	createParams, _ := json.Marshal(map[string]interface{}{
+		"id":                  orderID,
+		"buyer":               "0xBuyer10",
+		"restaurant":          "0xRest10",
+		"amount":              uint64(1000),
+		"delivery_fee":        uint64(100),
+		"tip":                 uint64(50),
+		"pickup_barcode":      "PICK-10",
+		"delivery_secret_pin": "5555",
+	})
+	res, err = Call("createOrder", string(createParams))
+	if err != nil {
+		t.Fatalf("createOrder failed: %v", err)
+	}
+	if !strings.Contains(res, "Commission: 10%") {
+		t.Errorf("expected 10%% commission logged on createOrder, got %s", res)
+	}
+
+	// Move order to IN_TRANSIT
+	acceptParams, _ := json.Marshal(map[string]string{"id": orderID})
+	Call("acceptOrder", string(acceptParams))
+	assignParams, _ := json.Marshal(map[string]string{"id": orderID, "courier": "0xCourier10"})
+	Call("assignCourier", string(assignParams))
+	pickupParams, _ := json.Marshal(map[string]string{"id": orderID, "pickup_barcode": "PICK-10"})
+	Call("confirmPickup", string(pickupParams))
+
+	// Confirm Delivery: 10% commission on 1000 -> 900 to Restaurant, (100 + 100 + 50) = 250 to Courier
+	deliverParams, _ := json.Marshal(map[string]string{"id": orderID, "delivery_proof_code": "5555"})
+	res, err = Call("confirmDelivery", string(deliverParams))
+	if err != nil {
+		t.Fatalf("confirmDelivery failed: %v", err)
+	}
+	if !strings.Contains(res, "900 OEN to Restaurant") {
+		t.Errorf("expected 900 OEN to Restaurant, got %s", res)
+	}
+	if !strings.Contains(res, "250 OEN to Courier") {
+		t.Errorf("expected 250 OEN to Courier, got %s", res)
+	}
+
+	// 5. Test 0% Promotional Commission Override on specific order
+	zeroOrderID := "ord_comm_zero"
+	zeroParams, _ := json.Marshal(map[string]interface{}{
+		"id":                  zeroOrderID,
+		"buyer":               "0xBuyerZero",
+		"restaurant":          "0xRestZero",
+		"amount":              uint64(1000),
+		"delivery_fee":        uint64(100),
+		"tip":                 uint64(50),
+		"commission_rate_pct": uint64(0),
+		"pickup_barcode":      "PICK-ZERO",
+		"delivery_secret_pin": "0000",
+	})
+	res, err = Call("createOrder", string(zeroParams))
+	if err != nil {
+		t.Fatalf("createOrder with 0%% commission failed: %v", err)
+	}
+	if !strings.Contains(res, "Commission: 0%") {
+		t.Errorf("expected 0%% commission logged on createOrder, got %s", res)
+	}
+
+	// Advance to Delivery
+	acceptZero, _ := json.Marshal(map[string]string{"id": zeroOrderID})
+	Call("acceptOrder", string(acceptZero))
+	assignZero, _ := json.Marshal(map[string]string{"id": zeroOrderID, "courier": "0xCourierZero"})
+	Call("assignCourier", string(assignZero))
+	pickupZero, _ := json.Marshal(map[string]string{"id": zeroOrderID, "pickup_barcode": "PICK-ZERO"})
+	Call("confirmPickup", string(pickupZero))
+
+	// Confirm Delivery: 0% commission on 1000 -> 1000 to Restaurant (100%), (0 + 100 + 50) = 150 to Courier
+	deliverZero, _ := json.Marshal(map[string]string{"id": zeroOrderID, "delivery_proof_code": "0000"})
+	res, err = Call("confirmDelivery", string(deliverZero))
+	if err != nil {
+		t.Fatalf("confirmDelivery with 0%% commission failed: %v", err)
+	}
+	if !strings.Contains(res, "1000 OEN to Restaurant") {
+		t.Errorf("expected 1000 OEN (100%%) to Restaurant, got %s", res)
+	}
+	if !strings.Contains(res, "150 OEN to Courier") {
+		t.Errorf("expected 150 OEN to Courier, got %s", res)
+	}
+
+	// Reset default commission back to 5% for clean state
+	resetParams, _ := json.Marshal(map[string]uint64{"rate_pct": 5})
+	Call("setCommissionRate", string(resetParams))
+}

@@ -48,10 +48,46 @@ const users = {
 
 const orders = {};
 
+// ── Commission Configuration (Manually Settable, Default: 5%) ────────────────
+let defaultCommissionPct = 5;
+const MIN_COMMISSION_PCT = 0;
+const MAX_COMMISSION_PCT = 30;
+
 // Helper: SHA256
 function sha256(str) {
     return crypto.createHash('sha256').update(str).digest('hex');
 }
+
+// ── ADMIN COMMISSION CONFIGURATION APIS ──────────────────────────────────────
+
+// GET /api/admin/commission - Query current platform commission rate
+app.get('/api/admin/commission', (req, res) => {
+    res.json({
+        success: true,
+        commissionPct: defaultCommissionPct,
+        minPct: MIN_COMMISSION_PCT,
+        maxPct: MAX_COMMISSION_PCT,
+        restaurantSharePct: 100 - defaultCommissionPct
+    });
+});
+
+// POST /api/admin/commission - Manually update global platform commission
+app.post('/api/admin/commission', (req, res) => {
+    const { ratePct } = req.body;
+    const num = Number(ratePct);
+    if (isNaN(num) || num < MIN_COMMISSION_PCT || num > MAX_COMMISSION_PCT) {
+        return res.status(400).json({
+            error: `Invalid commission rate. Must be a number between ${MIN_COMMISSION_PCT}% and ${MAX_COMMISSION_PCT}%.`
+        });
+    }
+    defaultCommissionPct = num;
+    res.json({
+        success: true,
+        message: `Platform commission rate updated to ${defaultCommissionPct}%`,
+        commissionPct: defaultCommissionPct,
+        restaurantSharePct: 100 - defaultCommissionPct
+    });
+});
 
 // ── 1. DUAL-WALLET APIS ───────────────────────────────────────────────────────
 
@@ -128,13 +164,23 @@ app.post('/api/orders', async (req, res) => {
             amount = 25.00,
             deliveryFee = 3.50,
             tip = 2.00,
-            paymentMethod = 'CRYPTO_OEN' // or 'DIGITAL_WALLET'
+            paymentMethod = 'CRYPTO_OEN', // or 'DIGITAL_WALLET'
+            commissionPct
         } = req.body;
 
         const buyer = users[buyerId];
         const restaurant = users[restaurantId];
         if (!buyer || !restaurant) {
             return res.status(400).json({ error: 'Invalid buyer or restaurant ID' });
+        }
+
+        // Determine active commission percentage (default: 5%, bounded between 0% and 30%)
+        let activeCommissionPct = defaultCommissionPct;
+        if (commissionPct !== undefined && commissionPct !== null) {
+            const parsed = Number(commissionPct);
+            if (!isNaN(parsed) && parsed >= MIN_COMMISSION_PCT && parsed <= MAX_COMMISSION_PCT) {
+                activeCommissionPct = parsed;
+            }
         }
 
         const orderId = `ord_${Date.now()}`;
@@ -154,6 +200,7 @@ app.post('/api/orders', async (req, res) => {
             deliveryFee: parseFloat(deliveryFee),
             tip: parseFloat(tip),
             total: parseFloat(amount) + parseFloat(deliveryFee) + parseFloat(tip),
+            commissionPct: activeCommissionPct,
             paymentMethod,
             status: 'AWAITING_RESTAURANT', // AWAITING_RESTAURANT -> PREPARING -> IN_TRANSIT -> DELIVERED
             pickupBarcode,
@@ -250,14 +297,16 @@ app.post('/api/orders/:id/confirm-delivery', async (req, res) => {
         return res.status(400).json({ error: 'Proof-of-delivery failed: Barcode or PIN incorrect' });
     }
 
-    // Autonomous Settlement Math:
-    // 95% of food subtotal -> Restaurant
-    // 5% + DeliveryFee + Tip -> Courier
-    const restaurantPayout = (order.amount * 0.95);
-    const courierPayout = (order.amount * 0.05) + order.deliveryFee + order.tip;
+    // Autonomous Settlement Math based on order's locked commission percentage:
+    const commPct = typeof order.commissionPct === 'number' ? order.commissionPct : defaultCommissionPct;
+    const platformCut = parseFloat(((order.amount * commPct) / 100).toFixed(2));
+    const restaurantPayout = parseFloat((order.amount - platformCut).toFixed(2));
+    const courierPayout = parseFloat((platformCut + order.deliveryFee + order.tip).toFixed(2));
 
     order.status = 'DELIVERED';
     order.settledAt = new Date().toISOString();
+    order.commissionPct = commPct;
+    order.platformCut = platformCut;
     order.restaurantPayout = restaurantPayout;
     order.courierPayout = courierPayout;
 
@@ -277,8 +326,10 @@ app.post('/api/orders/:id/confirm-delivery', async (req, res) => {
 
     res.json({
         success: true,
-        message: 'Order delivered & escrow autonomously settled on-chain!',
+        message: `Order delivered & escrow autonomously settled on-chain! [Commission: ${commPct}%]`,
         settlement: {
+            commissionPct: commPct,
+            platformFeeEUR: platformCut.toFixed(2),
             restaurantPayoutEUR: restaurantPayout.toFixed(2),
             courierPayoutEUR: courierPayout.toFixed(2),
             customerCashbackEUR: cashback.toFixed(2),

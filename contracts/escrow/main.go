@@ -20,16 +20,22 @@ const (
 	StatusDisputed   OrderStatus = "DISPUTED"
 )
 
+const (
+	DefaultCommissionPct uint64 = 5
+	MaxCommissionPct     uint64 = 30
+)
+
 // EscrowOrder represents an on-chain food delivery order
 type EscrowOrder struct {
 	ID                string      `json:"id"`
 	Buyer             string      `json:"buyer"`
 	Restaurant        string      `json:"restaurant"`
 	Courier           string      `json:"courier"`
-	Amount            uint64      `json:"amount"`       // Food subtotal in OEN
-	DeliveryFee       uint64      `json:"delivery_fee"` // Delivery fee in OEN
-	Tip               uint64      `json:"tip"`          // Courier tip in OEN
-	TotalLocked       uint64      `json:"total_locked"` // Total funds locked in contract
+	Amount            uint64      `json:"amount"`              // Food subtotal in OEN
+	DeliveryFee       uint64      `json:"delivery_fee"`        // Delivery fee in OEN
+	Tip               uint64      `json:"tip"`                 // Courier tip in OEN
+	TotalLocked       uint64      `json:"total_locked"`        // Total funds locked in contract
+	CommissionRatePct uint64      `json:"commission_rate_pct"` // Commission percentage locked for this order
 	Status            OrderStatus `json:"status"`
 	PickupBarcodeHash string      `json:"pickup_barcode_hash"` // SHA256 of pickup barcode
 	DeliveryProofHash string      `json:"delivery_proof_hash"` // SHA256 of delivery barcode/PIN
@@ -42,6 +48,8 @@ type EscrowOrder struct {
 var (
 	// contractState persists order states across contract calls
 	contractState = make(map[string]EscrowOrder)
+	// globalDefaultCommissionPct is the configurable contract default rate (0 - 30%)
+	globalDefaultCommissionPct uint64 = DefaultCommissionPct
 )
 
 // hashString computes SHA256 hex string for verification
@@ -56,14 +64,15 @@ func Call(method string, paramsJSON string) (string, error) {
 
 	case "createOrder":
 		var params struct {
-			ID                string `json:"id"`
-			Buyer             string `json:"buyer"`
-			Restaurant        string `json:"restaurant"`
-			Amount            uint64 `json:"amount"`
-			DeliveryFee       uint64 `json:"delivery_fee"`
-			Tip               uint64 `json:"tip"`
-			PickupBarcode     string `json:"pickup_barcode"`
-			DeliverySecretPIN string `json:"delivery_secret_pin"`
+			ID                string  `json:"id"`
+			Buyer             string  `json:"buyer"`
+			Restaurant        string  `json:"restaurant"`
+			Amount            uint64  `json:"amount"`
+			DeliveryFee       uint64  `json:"delivery_fee"`
+			Tip               uint64  `json:"tip"`
+			CommissionRatePct *uint64 `json:"commission_rate_pct,omitempty"`
+			PickupBarcode     string  `json:"pickup_barcode"`
+			DeliverySecretPIN string  `json:"delivery_secret_pin"`
 		}
 		if err := json.Unmarshal([]byte(paramsJSON), &params); err != nil {
 			return "", fmt.Errorf("invalid createOrder params: %w", err)
@@ -75,6 +84,14 @@ func Call(method string, paramsJSON string) (string, error) {
 			return "", fmt.Errorf("order amount must be greater than zero")
 		}
 
+		commissionRate := globalDefaultCommissionPct
+		if params.CommissionRatePct != nil {
+			if *params.CommissionRatePct > MaxCommissionPct {
+				return "", fmt.Errorf("commission rate %d%% exceeds maximum allowed %d%%", *params.CommissionRatePct, MaxCommissionPct)
+			}
+			commissionRate = *params.CommissionRatePct
+		}
+
 		total := params.Amount + params.DeliveryFee + params.Tip
 		order := EscrowOrder{
 			ID:                params.ID,
@@ -84,6 +101,7 @@ func Call(method string, paramsJSON string) (string, error) {
 			DeliveryFee:       params.DeliveryFee,
 			Tip:               params.Tip,
 			TotalLocked:       total,
+			CommissionRatePct: commissionRate,
 			Status:            StatusCreated,
 			PickupBarcodeHash: hashString(params.PickupBarcode),
 			DeliveryProofHash: hashString(params.DeliverySecretPIN),
@@ -91,7 +109,7 @@ func Call(method string, paramsJSON string) (string, error) {
 		}
 		contractState[params.ID] = order
 
-		return fmt.Sprintf("Order %s created and %d OEN locked in escrow", params.ID, total), nil
+		return fmt.Sprintf("Order %s created and %d OEN locked in escrow (Commission: %d%%)", params.ID, total, commissionRate), nil
 
 	case "acceptOrder":
 		var params struct {
@@ -177,11 +195,14 @@ func Call(method string, paramsJSON string) (string, error) {
 			return "", fmt.Errorf("invalid delivery proof: barcode or PIN does not match customer secret")
 		}
 
-		// Autonomous Settlement:
-		// 95% of food subtotal to Restaurant
-		// 5% of food subtotal + 100% of DeliveryFee + 100% of Tip to Courier
-		restaurantCut := (order.Amount * 95) / 100
-		courierCut := (order.Amount - restaurantCut) + order.DeliveryFee + order.Tip
+		// Autonomous Settlement based on the locked CommissionRatePct:
+		commRate := order.CommissionRatePct
+		if commRate > MaxCommissionPct {
+			commRate = DefaultCommissionPct
+		}
+		platformCut := (order.Amount * commRate) / 100
+		restaurantCut := order.Amount - platformCut
+		courierCut := platformCut + order.DeliveryFee + order.Tip
 
 		order.Status = StatusDelivered
 		order.RestaurantPayout = restaurantCut
@@ -191,6 +212,22 @@ func Call(method string, paramsJSON string) (string, error) {
 
 		return fmt.Sprintf("Order %s delivered! Escrow settled: %d OEN to Restaurant (%s), %d OEN to Courier (%s)",
 			params.ID, restaurantCut, order.Restaurant, courierCut, order.Courier), nil
+
+	case "setCommissionRate":
+		var params struct {
+			RatePct uint64 `json:"rate_pct"`
+		}
+		if err := json.Unmarshal([]byte(paramsJSON), &params); err != nil {
+			return "", fmt.Errorf("invalid setCommissionRate params: %w", err)
+		}
+		if params.RatePct > MaxCommissionPct {
+			return "", fmt.Errorf("commission rate %d%% exceeds maximum allowed %d%%", params.RatePct, MaxCommissionPct)
+		}
+		globalDefaultCommissionPct = params.RatePct
+		return fmt.Sprintf("Default commission rate updated to %d%%", params.RatePct), nil
+
+	case "getCommissionRate":
+		return fmt.Sprintf(`{"commission_rate_pct":%d,"max_commission_pct":%d}`, globalDefaultCommissionPct, MaxCommissionPct), nil
 
 	case "refundOrder":
 		var params struct {
