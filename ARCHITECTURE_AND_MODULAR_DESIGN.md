@@ -1,154 +1,135 @@
-# OenGo & Oenexa: Architecture & Modular Design System
+# OenGo API: Backend Modular Design System & SRP Standards ⚙️
 
-> **Document Status**: Production Architecture Standard  
-> **Target Audience**: Human Software Engineers & Autonomous AI Coding Agents  
+> **Repository**: `oengo-api`  
+> **Status**: Production Architecture Standard  
+> **Target Audience**: Human Engineers & Autonomous AI Coding Agents  
+> **Framework**: Node.js 24 LTS / Express.js / REST & Web3 RPC Proxy  
 > **Last Updated**: 2026-10-04  
-> **Scope**: `oengo-web` (Frontend), `oengo-api` (Commerce Gateway), and `oenexa-node` (L1 Blockchain)
 
 ---
 
 ## 1. Architectural Philosophy & Principles
 
 ### 1.1 Single Responsibility Principle (SRP)
-Every module, file, and React component must have **one, and only one**, reason to change. 
-- **Anti-Pattern**: Putting 800+ lines of state management, API calls, SVG maps, forms, modals, and checkout math into a single `page.tsx`.
-- **Approved Pattern**: Modular components with focused scopes (<150 lines average), strictly typed input props, and isolated responsibilities.
+Every file and function in `oengo-api` must have **one, and only one**, reason to change:
+- **Routes (`src/routes/**`)**: Pure HTTP request/response routing. Validate input parameters and delegate immediately to services. No database mutations or business algorithms in route handlers.
+- **Services (`src/services/**`)**: Pure business logic and domain operations (escrow calculations, commission policies, payment authorizations, kitchen state transitions).
+- **Data Store (`src/data/**`)**: State persistence abstraction and in-memory store models.
+- **Utilities (`src/utils/**`)**: Pure, side-effect-free helper functions (Luhn validation, card brand detection, SHA-256 hashing).
+- **Configuration (`src/config/**`)**: Environment variables, default rates, and platform thresholds.
 
-### 1.2 Container / Presentational Separation
-- **Page Orchestrators (`src/app/**/page.tsx`)**: Act strictly as coordinators. They fetch initial data, hold high-level screen states (active tabs, selected restaurant, cart state), and compose presentational subcomponents.
-- **Presentational Components (`src/components/**`)**: Receive props and emit typed callbacks. They do not initiate arbitrary out-of-band state mutations or hardcode API URLs.
-
-### 1.3 Decoupled API & Network Layer
-- **Central API Client (`src/lib/api.ts`)**: All HTTP communication, error parsing, and fallback behaviors are centralized.
-- Components never execute raw `fetch()` calls or invent ad-hoc endpoints.
-
-### 1.4 Strict Domain Modeling
-- **TypeScript Contracts (`src/types/`)**: Domain models (Restaurant, MenuItem, Order, Payment, Wallet) are defined once in dedicated type files and re-exported via `src/types/index.ts`. No duplicate interfaces across files.
-
----
-
-## 2. Directory Structure & File Taxonomy (`oengo-web`)
-
+### 1.2 Separation of Concerns: 3-Tier Layering
 ```text
-oengo-web/
-├── src/
-│   ├── app/                               # Next.js App Router (Entrypoint Orchestrators)
-│   │   ├── layout.tsx                     # Root layout with fonts and metadata
-│   │   ├── page.tsx                       # Customer Portal Container (Directory, Menu, Checkout, Live Tracking)
-│   │   └── merchant/
-│   │       └── page.tsx                   # Kitchen / Merchant Portal Container (KDS, Menu, Vault)
-│   │
-│   ├── components/                        # Modular React Components (Categorized by Domain)
-│   │   ├── common/                        # Shared cross-domain UI components
-│   │   │   ├── Header.tsx                 # Navigation header, location address, portal links
-│   │   │   └── WalletBadge.tsx            # Digital wallet & Web3 crypto balance indicator
-│   │   │
-│   │   ├── customer/                      # Customer discovery, browsing & cart components
-│   │   │   ├── CuisineFilter.tsx          # Category filters and live restaurant search
-│   │   │   ├── RestaurantCard.tsx         # Individual restaurant card (rating, ETA, badge)
-│   │   │   ├── RestaurantDirectory.tsx    # Responsive grid of partner storefronts
-│   │   │   ├── StorefrontBanner.tsx       # Restaurant hero banner & 95% retention guarantee
-│   │   │   ├── DishCard.tsx               # Dish presentation with dual EUR/OEN pricing
-│   │   │   ├── MenuCatalog.tsx            # Categorized dish grid with quick-add actions
-│   │   │   └── CartDrawer.tsx             # Sticky slide-out cart, tips, eco-delivery & checkout CTA
-│   │   │
-│   │   ├── checkout/                      # Tri-Rail checkout & payment components
-│   │   │   ├── CommissionSelector.tsx     # Dynamic platform commission buttons (0%, 3%, 5%, 10%)
-│   │   │   ├── CardPaymentForm.tsx        # Instant credit/debit card form with brand badge
-│   │   │   └── TriRailPaymentSelector.tsx # Payment method switcher (Card, In-App Wallet, Crypto)
-│   │   │
-│   │   ├── tracking/                      # Real-time order fulfillment & simulation components
-│   │   │   ├── OrderTrackingStepper.tsx   # 5-stage visual progress stepper
-│   │   │   ├── LiveVectorMap.tsx          # Vector street map (Naples) with moving courier polyline
-│   │   │   ├── DoorstepCredentials.tsx    # Scannable barcode & customer verification PIN
-│   │   │   ├── LifecycleSimulator.tsx     # Multi-party action triggers (Kitchen, Courier, Customer)
-│   │   │   └── ActiveOrderTrackingView.tsx# Unified tracking layout
-│   │   │
-│   │   └── merchant/                      # Merchant operations & KDS portal components
-│   │       ├── MerchantHeader.tsx         # Store status toggle, audio chime switch, navigation
-│   │       ├── FinancialRibbon.tsx        # Real-time revenue retention metrics & legacy savings
-│   │       ├── KdsTicketCard.tsx          # Real-time kitchen display ticket with prep ETA & actions
-│   │       ├── MenuManager.tsx            # 86-item availability toggles & item removal
-│   │       ├── AddDishModal.tsx           # New menu item creation modal
-│   │       ├── CounterBarcodeModal.tsx    # Enlarged counter pickup verification barcode
-│   │       └── VaultAnalytics.tsx         # Smart contract escrow settlement history & payout logs
-│   │
-│   ├── lib/                               # Core libraries, utilities & clients
-│   │   ├── api.ts                         # Typed API client for all backend endpoints
-│   │   ├── constants.ts                   # Environment defaults, exchange rates, commission configs
-│   │   └── utils.ts                       # Currency formatters, card brand detection, helpers
-│   │
-│   └── types/                             # Domain type definitions
-│       ├── index.ts                       # Barrel re-export for clean imports
-│       ├── menu.ts                        # MenuItem, CartItem interfaces
-│       ├── order.ts                       # OrderData, OrderItem, OrderStatus, TrackingStep
-│       ├── payment.ts                     # PaymentMethodOption, CardPaymentData, CardIntentResponse
-│       ├── restaurant.ts                  # Restaurant, RestaurantStats, RestaurantProfile
-│       └── wallet.ts                      # WalletData, DigitalWallet, CryptoWallet
+HTTP Request  ──►  Router Layer (src/routes/)
+                         │
+                         ▼
+                   Service Layer (src/services/)
+                         │
+        ┌────────────────┴────────────────┐
+        ▼                                 ▼
+Data Store (src/data/)         L1 Node RPC (Web3 Proxy)
 ```
 
 ---
 
-## 3. Component Specification & Boundaries
+## 2. Directory Structure & File Taxonomy (`oengo-api`)
 
-### 3.1 Common Layer (`src/components/common/`)
-- **`Header.tsx`**: Renders brand identity, current delivery address modal/trigger, customer/merchant switcher, and embedded `WalletBadge`.
-- **`WalletBadge.tsx`**: Shows connected wallet status (Digital Wallet balance in EUR, and Oenexa Crypto balance in OEN).
-
-### 3.2 Customer Layer (`src/components/customer/`)
-- **`CuisineFilter.tsx`**: Manages search query string and selected cuisine category pills.
-- **`RestaurantCard.tsx`**: Clean presentation card displaying restaurant badge, rating, delivery time, and minimum order.
-- **`RestaurantDirectory.tsx`**: Maps over filtered restaurants and renders grid layout.
-- **`StorefrontBanner.tsx`**: Visual header for selected restaurant with back button, chef bio, and 95% retention badge.
-- **`DishCard.tsx`**: Card for menu item with dual-pricing calculation (`formatEUR` & `formatOEN`), image, and add-to-cart trigger.
-- **`MenuCatalog.tsx`**: Categorizes dishes into Starters, Mains, Desserts, and Beverages.
-- **`CartDrawer.tsx`**: Slide-out cart displaying item quantities, tip selectors (0%, 5%, 10%, 15%), carbon-neutral delivery toggle, and embedded checkout drawer.
-
-### 3.3 Checkout Layer (`src/components/checkout/`)
-- **`CommissionSelector.tsx`**: Visual platform fee selection (0%, 3%, 5%, 10%). Calculates dynamic merchant payout and displays platform subsidy note for 0% fee.
-- **`CardPaymentForm.tsx`**: Credit card inputs with live Luhn validation, real-time card brand detection (Visa, Mastercard, Amex, Discover), CVV masking, and 1-tap test presets.
-- **`TriRailPaymentSelector.tsx`**: Tabbed selection between:
-  1. Credit / Debit Card (Instant clearing via payment rails).
-  2. In-App Digital Wallet (Pre-funded EUR balance).
-  3. Web3 Crypto Wallet (Direct OEN transaction on Oenexa L1).
-
-### 3.4 Tracking Layer (`src/components/tracking/`)
-- **`OrderTrackingStepper.tsx`**: High-contrast 5-stage visual stepper (`CONFIRMED` → `PREPARING` → `READY_FOR_PICKUP` → `IN_TRANSIT` → `DELIVERED`).
-- **`LiveVectorMap.tsx`**: Stylized SVG vector map depicting merchant location, animated courier route, and delivery destination.
-- **`DoorstepCredentials.tsx`**: Generates high-density visual barcode for counter handoff and a 4-digit verification PIN for doorstep delivery.
-- **`LifecycleSimulator.tsx`**: Sandbox controls enabling instant simulation of kitchen readiness, courier pickup, and doorstep PIN delivery without external webhooks.
-- **`ActiveOrderTrackingView.tsx`**: Unified layout combining the map, credentials, stepper, and order item recap.
-
-### 3.5 Merchant / KDS Layer (`src/components/merchant/`)
-- **`MerchantHeader.tsx`**: Kitchen portal navigation with store open/closed switch and audio chime alerts for incoming orders.
-- **`FinancialRibbon.tsx`**: Displays Gross Sales, 95% Merchant Retention, and Legacy Platform Savings ($ saved vs 30% aggregator fees).
-- **`KdsTicketCard.tsx`**: Real-time kitchen display ticket showing order items, customer notes, prep time selector (15m, 25m, 40m), and "Mark Ready" action.
-- **`MenuManager.tsx`**: Live catalog manager with in-stock/sold-out switches (86-item toggle) and dish removal actions.
-- **`AddDishModal.tsx`**: Modal for creating new items with name, price in EUR, category, and image URL.
-- **`CounterBarcodeModal.tsx`**: Full-screen modal presenting high-density pickup barcode for courier scanning.
-- **`VaultAnalytics.tsx`**: Escrow settlement transparency table showing on-chain/instant payout events with tx hashes.
+```text
+oengo-api/
+├── server.js                              # Lean application entry point (< 20 lines)
+├── ARCHITECTURE_AND_MODULAR_DESIGN.md     # Backend architecture & AI coding standards
+├── DEVELOPER_AND_AI_RULES.md              # Quality gate policy
+├── package.json                           # Dependencies and test runner script
+│
+├── src/
+│   ├── app.js                             # Express application assembly, CORS & middleware
+│   │
+│   ├── config/                            # Environment & configuration constants
+│   │   └── constants.js                   # RPC URL, commission bounds, exchange rates
+│   │
+│   ├── utils/                             # Pure stateless utility functions
+│   │   ├── cardBrand.js                   # Regex card detection & card length/CVC validation
+│   │   └── hash.js                        # SHA-256 cryptographic hashing helper
+│   │
+│   ├── data/                              # State persistence & datastores
+│   │   └── store.js                       # Users, restaurants, menus, orders, savedCards
+│   │
+│   ├── services/                          # Business logic & domain services
+│   │   ├── commissionService.js           # Query & update platform fee (0% to 30%)
+│   │   ├── paymentService.js              # Card intent creation, payment authorization
+│   │   ├── walletService.js               # Dual-wallet balances (Fiat EUR + On-Chain OEN)
+│   │   ├── orderService.js                # Order creation, order listing, courier assignment
+│   │   ├── escrowService.js               # Kitchen acceptance, pickup, PIN settlement & refunds
+│   │   ├── restaurantService.js           # Catalog, cuisine filters, dish CRUD, financial analytics
+│   │   └── deliveryService.js             # Delivery fee, distance ETA, live tracking telemetry
+│   │
+│   └── routes/                            # Modular Express router endpoints
+│       ├── adminRoutes.js                 # /api/admin/commission
+│       ├── paymentRoutes.js               # /api/payments/* (card-intent, confirm-card, methods)
+│       ├── walletRoutes.js                # /api/wallet/* (balance inquiry, topup)
+│       ├── orderRoutes.js                 # /api/orders/* (create, get, accept, ready, decline, verify)
+│       ├── restaurantRoutes.js            # /api/restaurants/* (listing, profile, menu CRUD, KDS)
+│       ├── deliveryRoutes.js              # /api/delivery/* (estimate, tracking)
+│       └── rpcRoutes.js                   # /api/rpc/broadcast (L1 node gateway proxy)
+│
+└── test/                                  # Automated Node.js native test runner suites
+    ├── payments.test.js                   # Card brand & Luhn tests
+    ├── restaurants.test.js                # Financial retention & KDS transition tests
+    ├── storefront.test.js                 # Catalog & search tests
+    └── modular_services.test.js           # Direct unit tests for all SRP service modules
+```
 
 ---
 
-## 4. Developer & AI Agent Guidelines
+## 3. Service Specifications & Domain Boundaries
 
-Future engineers and autonomous AI agents working in this repository **must** strictly adhere to the following rules:
+### 3.1 `commissionService.js`
+- **Responsibility**: Manages the dynamic platform commission policy.
+- **Invariants**: Commission rate must stay within bounded limits `[0%, 30%]`. Defaults to `5%`. Computes merchant retained share (`100 - commissionPct`).
+
+### 3.2 `paymentService.js`
+- **Responsibility**: Card intent generation, client secrets, instant card authorization, card saving, and payment method enumeration.
+- **Invariants**: Never stores raw CVV. Validates length between 13 and 19 digits.
+
+### 3.3 `walletService.js`
+- **Responsibility**: Aggregates customer/merchant off-chain fiat credits and queries on-chain non-custodial balance from Oenexa L1 Node (`oen_getBalance`).
+- **Invariants**: Gracefully falls back to simulated balance if the L1 node is offline or initializing.
+
+### 3.4 `orderService.js`
+- **Responsibility**: Generates secure order records with scannable pickup barcode (`PKG-XXXXXX`) and a 4-digit secret delivery PIN.
+- **Invariants**: Stores cryptographic SHA-256 hashes of barcodes and PINs for zero-knowledge verification.
+
+### 3.5 `escrowService.js`
+- **Responsibility**: State transitions for smart contract escrow settlement:
+  1. `acceptOrder`: Kitchen begins preparation.
+  2. `markOrderReady`: Counter packaging complete.
+  3. `declineOrder`: Cancels order and triggers **100% immediate customer refund**.
+  4. `confirmPickup`: Verifies courier scanned package barcode hash.
+  5. `confirmDelivery`: Verifies customer delivery PIN hash, computes autonomous settlement (platform fee, restaurant 95% payout, courier payout), and credits 5% loyalty cashback.
+
+### 3.6 `restaurantService.js`
+- **Responsibility**: Partner catalog management, cuisine filtering, dish availability toggles (86-ing items), and financial retention analytics.
+
+### 3.7 `deliveryService.js`
+- **Responsibility**: Fee calculation, distance estimation, and live GPS coordinate simulation for tracking.
+
+---
+
+## 4. Backend Developer & AI Agent Guidelines
+
+Future engineers and autonomous AI agents working in `oengo-api` **must** strictly adhere to the following rules:
 
 ### Rule 1: No Monolithic Files
-- **Maximum file size limit**: 300 lines of code for components; 400 lines for page orchestrators.
-- If a file exceeds this limit, extract logical subcomponents into the appropriate `src/components/<category>/` directory.
+- **Maximum file size limit**: 200 lines for routes; 250 lines for services.
+- Never write business logic inside route controllers. Always delegate to a dedicated service in `src/services/`.
 
-### Rule 2: Strict Typing & Shared Contracts
-- Never use `any` in component props or API calls.
-- All new models must be added to `src/types/<category>.ts` and re-exported in `src/types/index.ts`.
-- Ensure frontend types match backend response schemas in `oengo-api/server.js`.
+### Rule 2: Pure Utilities
+- Utilities in `src/utils/` must be pure functions with zero database side-effects and zero external network calls.
 
-### Rule 3: Network Centralization
-- Never invoke `fetch('http://localhost:3001/...')` directly inside a component.
-- Add typed methods to `src/lib/api.ts` with error handling and fallback defaults.
+### Rule 3: Graceful Error Handling
+- Service methods must throw typed errors with `statusCode` properties (e.g. 400 for validation errors, 404 for missing resources).
+- Route handlers must catch these errors and respond with appropriate HTTP status codes.
 
 ### Rule 4: Zero-Bug Quality Gate
 Before submitting any pull request or committing code:
-1. `oengo-web`: Execute `npm run build` — must finish with exit code 0 and zero TypeScript errors.
-2. `oengo-api`: Execute `npm test` — all test suites must pass (15/15 passing).
-3. `oenexa-node`: Execute `go test ./...` — must finish with exit code 0.
+- Execute `npm test` — all test suites in `test/*.test.js` must pass with 100% success rate (currently 22/22 passing).
