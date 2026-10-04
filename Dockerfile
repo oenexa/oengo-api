@@ -2,7 +2,7 @@
 # Oengo API & Smart Contract Services Dockerfile
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage 1: Install production dependencies
-FROM node:24-alpine AS builder
+FROM node:24.21.0-alpine AS builder
 
 WORKDIR /app
 
@@ -10,7 +10,7 @@ COPY package*.json ./
 RUN npm ci --omit=dev
 
 # Stage 2: Minimal runtime
-FROM node:24-alpine
+FROM node:24.21.0-alpine
 
 WORKDIR /app
 ENV NODE_ENV=production
