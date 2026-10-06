@@ -240,6 +240,26 @@ func SetupRouter(svc *services.Services) *gin.Engine {
 			c.JSON(http.StatusOK, gin.H{"success": true, "order": updated})
 		})
 
+		api.POST("/orders/:id/assign-courier", func(c *gin.Context) {
+			id := c.Param("id")
+			var body struct {
+				CourierID string `json:"courierId"`
+			}
+			if err := c.ShouldBindJSON(&body); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
+			if body.CourierID == "" {
+				body.CourierID = "user_courier"
+			}
+			updated, err := svc.AssignCourier(id, body.CourierID)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
+			c.JSON(http.StatusOK, gin.H{"success": true, "order": updated})
+		})
+
 		api.POST("/orders/:id/confirm-pickup", func(c *gin.Context) {
 			id := c.Param("id")
 			var body struct {
