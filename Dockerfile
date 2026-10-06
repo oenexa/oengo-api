@@ -1,34 +1,31 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# Oengo API & Smart Contract Services Dockerfile
+# OENGO Go Enterprise Backend Daemon Dockerfile
 # ─────────────────────────────────────────────────────────────────────────────
-# Stage 1: Install production dependencies
-FROM node:24.21.0-alpine AS builder
+# Stage 1: Build binary with Go 1.26
+FROM golang:1.26-alpine AS builder
 
 WORKDIR /app
 
-COPY package*.json ./
-RUN npm ci --omit=dev
+RUN apk add --no-cache git ca-certificates tzdata
 
-# Stage 2: Minimal runtime
-FROM node:24.21.0-alpine
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o /app/oengo-api .
+
+# Stage 2: Minimal runtime image
+FROM alpine:3.20
 
 WORKDIR /app
-ENV NODE_ENV=production
+RUN apk --no-cache add ca-certificates tzdata wget
+
+COPY --from=builder /app/oengo-api /app/oengo-api
+
 ENV PORT=3001
-
-# Copy dependencies and application source
-COPY --from=builder /app/node_modules ./node_modules
-COPY package*.json ./
-COPY server.js ./
-COPY src ./src
-COPY contracts ./contracts
-
-# Run as non-root user for container security
-USER node
-
 EXPOSE 3001
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+HEALTHCHECK --interval=20s --timeout=5s --start-period=5s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:3001/health || exit 1
 
-CMD ["node", "server.js"]
+ENTRYPOINT ["/app/oengo-api"]
