@@ -28,8 +28,8 @@ func SetupRouter(svc *services.Services) *gin.Engine {
 	config.AllowHeaders = []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Requested-With"}
 	r.Use(cors.New(config))
 
-	// Health check
-	r.GET("/health", func(c *gin.Context) {
+	// Health check (supports GET and HEAD)
+	r.Match([]string{"GET", "HEAD"}, "/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"status":    "UP",
 			"service":   "oengo-api",
