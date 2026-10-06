@@ -1,13 +1,24 @@
-# Oengo API & Smart Contracts Rules
+# OENGO-API — Backend Developer & AI Agent Rules
 # MANDATORY FOR ALL AI AGENTS & DEVELOPERS
 
-## Core Principles
-1. ZERO-BUG & TEST PASSING MANDATE:
-   - Always run `go test -v ./...` in `contracts/escrow` before any commit.
+## 1. Core Principles & Boundaries
+1. PURE BACKEND ISOLATION:
+   - This repository is exclusively for Backend APIs, Business Logic, and Smart Contracts.
+   - ZERO Frontend / UI / React / JSX code is permitted in this repository.
+   - All client interactions occur strictly via versioned JSON REST APIs and WebSockets.
+   - Refer to `BACKEND_ARCHITECTURE.md` for full system architecture and conventions.
+
+2. ZERO-BUG & TEST PASSING MANDATE:
+   - Always run `npm test` and `go test -v ./...` in `contracts/escrow` before any commit.
    - 100% of contract and API tests must pass with 0 errors.
    - Pushing unverified or failing code to `main` is strictly forbidden.
 
-2. SECURITY & ESCROW PROTECTION:
-   - Escrow states must mathematically preserve financial invariants.
+3. FINANCIAL LEDGER INVARIANTS:
+   - All wallet operations must obey double-entry rules: Total Debits == Total Credits.
+   - Negative balances are strictly prevented by database check constraints.
+   - Platform commission is strictly bounded between 0% and 30% (default: 5%).
+
+4. SECURITY & PCI-DSS LEVEL 1 COMPLIANCE:
+   - Never store raw card numbers, CVVs, or primary account numbers in databases or logs.
    - Never commit private keys or environment secrets to git.
-   - See `DEVELOPER_AND_AI_RULES.md` for complete enforcement policies.
+   - Implement idempotency keys on all payment and disbursement operations.
