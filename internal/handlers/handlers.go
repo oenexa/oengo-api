@@ -40,6 +40,48 @@ func SetupRouter(svc *services.Services) *gin.Engine {
 
 	api := r.Group("/api")
 	{
+		// ── AUTH & KYC ──
+		api.POST("/auth/register", func(c *gin.Context) {
+			var req services.RegisterRequest
+			if err := c.ShouldBindJSON(&req); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
+			user, err := svc.RegisterUser(req)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
+			c.JSON(http.StatusCreated, gin.H{"success": true, "user": user})
+		})
+
+		api.POST("/auth/login", func(c *gin.Context) {
+			var req struct {
+				Email    string `json:"email"`
+				Password string `json:"password"`
+			}
+			if err := c.ShouldBindJSON(&req); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
+			user, err := svc.LoginUser(req.Email, req.Password)
+			if err != nil {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+				return
+			}
+			c.JSON(http.StatusOK, gin.H{"success": true, "user": user})
+		})
+
+		api.POST("/admin/kyc/:userId/approve", func(c *gin.Context) {
+			userID := c.Param("userId")
+			user, err := svc.ApproveKYC(userID)
+			if err != nil {
+				c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+				return
+			}
+			c.JSON(http.StatusOK, gin.H{"success": true, "user": user})
+		})
+
 		// ── RESTAURANTS & MENUS ──
 		api.GET("/restaurants", func(c *gin.Context) {
 			cuisine := c.Query("cuisine")

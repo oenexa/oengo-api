@@ -23,9 +23,11 @@ type User struct {
 	Name                string        `json:"name"`
 	Email               string        `json:"email"`
 	Phone               string        `json:"phone"`
+	PasswordHash        string        `json:"-"`
 	Role                UserRole      `json:"role"`
 	DigitalWallet       DigitalWallet `json:"digitalWallet"`
 	CryptoWalletAddress string        `json:"cryptoWalletAddress"`
+	KYCStatus           string        `json:"kycStatus,omitempty"`
 }
 
 type SavedAddress struct {
