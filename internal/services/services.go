@@ -14,12 +14,15 @@ import (
 )
 
 type Services struct {
-	Store *store.Store
-	Cfg   *config.Config
+	Store    *store.Store
+	Cfg      *config.Config
+	Notifier *NotificationService
 }
 
 func NewServices(s *store.Store, cfg *config.Config) *Services {
-	return &Services{Store: s, Cfg: cfg}
+	// Initialize the Notification Service (with mock keys for now)
+	notifier := NewNotificationService("SG.MockKey123", "ACMockTwilioSID", "MockTwilioAuth")
+	return &Services{Store: s, Cfg: cfg, Notifier: notifier}
 }
 
 // ── RESTAURANT SERVICE ──────────────────────────────────────────────────────
@@ -317,6 +320,15 @@ func (svc *Services) UpdateOrderStatus(id string, status models.OrderStatus) (*m
 	}
 
 	o.Status = status
+	
+	// Notify Customer via Email/SMS
+	if svc.Notifier != nil {
+		user, hasUser := svc.Store.Users[o.BuyerID]
+		if hasUser {
+			svc.Notifier.NotifyOrderStatusChange(user.Email, user.Phone, o.ID, string(o.Status))
+		}
+	}
+
 	return o, nil
 }
 
