@@ -203,15 +203,15 @@ func (svc *Services) DeleteDish(restaurantID, itemID string) error {
 // ── ORDER SERVICE ───────────────────────────────────────────────────────────
 
 type CreateOrderRequest struct {
-	BuyerID       string             `json:"buyerId"`
-	RestaurantID  string             `json:"restaurantId"`
-	Items         []models.OrderItem `json:"items"`
-	Amount        float64            `json:"amount"`
-	DeliveryFee   float64            `json:"deliveryFee"`
-	Tip           float64            `json:"tip"`
-	PaymentMethod string             `json:"paymentMethod"`
+	BuyerID       string                  `json:"buyerId"`
+	RestaurantID  string                  `json:"restaurantId"`
+	Items         []models.OrderItem      `json:"items"`
+	Amount        float64                 `json:"amount"`
+	DeliveryFee   float64                 `json:"deliveryFee"`
+	Tip           float64                 `json:"tip"`
+	PaymentMethod string                  `json:"paymentMethod"`
 	CardPayment   *models.CardPaymentInfo `json:"cardPayment"`
-	CommissionPct *float64           `json:"commissionPct"`
+	CommissionPct *float64                `json:"commissionPct"`
 }
 
 func (svc *Services) CreateOrder(req CreateOrderRequest) (*models.Order, error) {
@@ -320,7 +320,7 @@ func (svc *Services) UpdateOrderStatus(id string, status models.OrderStatus) (*m
 	}
 
 	o.Status = status
-	
+
 	// Notify Customer via Email/SMS
 	if svc.Notifier != nil {
 		user, hasUser := svc.Store.Users[o.BuyerID]

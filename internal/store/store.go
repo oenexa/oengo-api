@@ -87,7 +87,7 @@ func (s *Store) RecordLedgerTx(txID, debitAcc, creditAcc string, amountEUR float
 	return nil
 }
 
-func (s *Store) Lock()   { s.mu.Lock() }
-func (s *Store) Unlock() { s.mu.Unlock() }
-func (s *Store) RLock()  { s.mu.RLock() }
+func (s *Store) Lock()    { s.mu.Lock() }
+func (s *Store) Unlock()  { s.mu.Unlock() }
+func (s *Store) RLock()   { s.mu.RLock() }
 func (s *Store) RUnlock() { s.mu.RUnlock() }

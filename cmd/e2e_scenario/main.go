@@ -135,11 +135,11 @@ func main() {
 	// 7. Place Order
 	fmt.Println("\n[7] Customer Placing Live Order...")
 	orderRes, err := post("/orders", map[string]interface{}{
-		"buyerId":      customerID,
-		"restaurantId": restID,
-		"amount":       15.50,
-		"deliveryFee":  2.50,
-		"tip":          2.00,
+		"buyerId":       customerID,
+		"restaurantId":  restID,
+		"amount":        15.50,
+		"deliveryFee":   2.50,
+		"tip":           2.00,
 		"paymentMethod": "WALLET",
 		"items": []map[string]interface{}{
 			{
@@ -162,7 +162,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	
+
 	_, err = post("/orders/"+orderID+"/ready", nil)
 	if err != nil {
 		panic(err)

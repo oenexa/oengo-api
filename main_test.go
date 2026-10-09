@@ -18,6 +18,17 @@ func setupTestApp() (*handlers.Router, *services.Services) {
 	cfg := config.LoadConfig()
 	st := store.NewStore(cfg)
 	svc := services.NewServices(st, cfg)
+	
+	// Create mock users for legacy tests
+	st.Users["user_customer"] = &models.User{ID: "user_customer", Role: "CUSTOMER", KYCStatus: "VERIFIED", DigitalWallet: models.DigitalWallet{FiatBalanceEUR: 100, LoyaltyPoints: 1000}}
+	st.Users["user_restaurant"] = &models.User{ID: "user_restaurant", Role: "RESTAURANT", KYCStatus: "VERIFIED"}
+	st.Users["user_courier"] = &models.User{ID: "user_courier", Role: "COURIER", KYCStatus: "VERIFIED"}
+	st.Coins["user_customer"] = &models.CoinProfile{UserID: "user_customer", CoinBalance: 1000}
+	
+	st.Restaurants["user_restaurant"] = &models.Restaurant{ID: "user_restaurant", Name: "Test Rest"}
+	st.Menus["user_restaurant"] = []models.MenuItem{{ID: "item_1", Name: "Pizza", PriceEUR: 10.0}}
+	st.Riders["user_courier"] = &models.RiderProfile{ID: "user_courier", IsOnline: true}
+	
 	engine := handlers.SetupRouter(svc)
 	return &handlers.Router{Engine: engine, Services: svc}, svc
 }

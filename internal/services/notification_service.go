@@ -26,7 +26,7 @@ func (n *NotificationService) SendEmail(to, subject, body string) error {
 	if n.SendGridAPIKey == "" {
 		log.Println("WARNING: SendGrid API Key not configured. Skipping real email.")
 	}
-	
+
 	// Simulated HTTP Call to https://api.sendgrid.com/v3/mail/send
 	log.Printf("[SENDGRID EMAIL] To: %s | Subject: %s | Body: %s\n", to, subject, body)
 	fmt.Printf("📧 Email successfully dispatched to %s via SendGrid.\n", to)
@@ -49,7 +49,7 @@ func (n *NotificationService) SendSMS(to, body string) error {
 func (n *NotificationService) NotifyOrderStatusChange(customerEmail, customerPhone, orderID, status string) {
 	subject := fmt.Sprintf("Your OENGO Order %s Update", orderID)
 	body := fmt.Sprintf("Hi! Your order %s is now: %s.", orderID, status)
-	
+
 	_ = n.SendEmail(customerEmail, subject, body)
 	if customerPhone != "" {
 		_ = n.SendSMS(customerPhone, body)

@@ -34,7 +34,7 @@ func (svc *Services) RegisterUser(req RegisterRequest) (*models.User, error) {
 	}
 
 	userID := fmt.Sprintf("usr_%d", time.Now().UnixMilli())
-	
+
 	// Initial KYC status
 	kycStatus := "PENDING"
 	if req.Role == models.RoleCustomer || req.Role == models.RoleAdmin {

@@ -80,15 +80,15 @@ type MenuItem struct {
 }
 
 type RestaurantStats struct {
-	TotalOrdersCount       int     `json:"totalOrdersCount"`
-	ActiveOrdersCount      int     `json:"activeOrdersCount"`
-	DeliveredOrdersCount   int     `json:"deliveredOrdersCount"`
-	GrossRevenueTodayEUR   float64 `json:"grossRevenueTodayEUR"`
-	FiatBalanceEUR         float64 `json:"fiatBalanceEUR"`
-	CommissionRetainedPct  float64 `json:"commissionRetainedPct"`
-	PlatformCommissionPct  float64 `json:"platformCommissionPct"`
-	LegacyLostRevenueEUR   float64 `json:"legacyLostRevenueEUR"`
-	AvgPrepTimeMinutes     int     `json:"avgPrepTimeMinutes"`
+	TotalOrdersCount      int     `json:"totalOrdersCount"`
+	ActiveOrdersCount     int     `json:"activeOrdersCount"`
+	DeliveredOrdersCount  int     `json:"deliveredOrdersCount"`
+	GrossRevenueTodayEUR  float64 `json:"grossRevenueTodayEUR"`
+	FiatBalanceEUR        float64 `json:"fiatBalanceEUR"`
+	CommissionRetainedPct float64 `json:"commissionRetainedPct"`
+	PlatformCommissionPct float64 `json:"platformCommissionPct"`
+	LegacyLostRevenueEUR  float64 `json:"legacyLostRevenueEUR"`
+	AvgPrepTimeMinutes    int     `json:"avgPrepTimeMinutes"`
 }
 
 type Restaurant struct {
@@ -146,34 +146,34 @@ const (
 )
 
 type Order struct {
-	ID                 string           `json:"id"`
-	BuyerID            string           `json:"buyerId"`
-	BuyerName          string           `json:"buyerName"`
-	BuyerAddress       string           `json:"buyerAddress"`
-	RestaurantID       string           `json:"restaurantId"`
-	RestaurantAddress  string           `json:"restaurantAddress"`
-	CourierID          string           `json:"courierId,omitempty"`
-	CourierAddress     string           `json:"courierAddress,omitempty"`
-	Items              []OrderItem      `json:"items"`
-	Amount             float64          `json:"amount"`
-	DeliveryFee        float64          `json:"deliveryFee"`
-	Tip                float64          `json:"tip"`
-	DiscountEUR        float64          `json:"discountEUR"`
-	Total              float64          `json:"total"`
-	CommissionPct      float64          `json:"commissionPct"`
-	PaymentMethod      string           `json:"paymentMethod"`
-	CardPayment        *CardPaymentInfo `json:"cardPayment,omitempty"`
-	PaymentStatus      string           `json:"paymentStatus"`
-	Status             OrderStatus      `json:"status"`
-	PickupBarcode      string           `json:"pickupBarcode"`
-	PickupBarcodeHash  string           `json:"pickupBarcodeHash"`
-	DeliveryPIN        string           `json:"deliveryPin"`
-	DeliveryPINHash    string           `json:"deliveryPinHash"`
-	CreatedAt          string           `json:"createdAt"`
-	DeliveredAt        string           `json:"deliveredAt,omitempty"`
-	EscrowLocked       bool             `json:"escrowLocked"`
-	RestaurantPayout   float64          `json:"restaurantPayout,omitempty"`
-	CourierPayout      float64          `json:"courierPayout,omitempty"`
+	ID                string           `json:"id"`
+	BuyerID           string           `json:"buyerId"`
+	BuyerName         string           `json:"buyerName"`
+	BuyerAddress      string           `json:"buyerAddress"`
+	RestaurantID      string           `json:"restaurantId"`
+	RestaurantAddress string           `json:"restaurantAddress"`
+	CourierID         string           `json:"courierId,omitempty"`
+	CourierAddress    string           `json:"courierAddress,omitempty"`
+	Items             []OrderItem      `json:"items"`
+	Amount            float64          `json:"amount"`
+	DeliveryFee       float64          `json:"deliveryFee"`
+	Tip               float64          `json:"tip"`
+	DiscountEUR       float64          `json:"discountEUR"`
+	Total             float64          `json:"total"`
+	CommissionPct     float64          `json:"commissionPct"`
+	PaymentMethod     string           `json:"paymentMethod"`
+	CardPayment       *CardPaymentInfo `json:"cardPayment,omitempty"`
+	PaymentStatus     string           `json:"paymentStatus"`
+	Status            OrderStatus      `json:"status"`
+	PickupBarcode     string           `json:"pickupBarcode"`
+	PickupBarcodeHash string           `json:"pickupBarcodeHash"`
+	DeliveryPIN       string           `json:"deliveryPin"`
+	DeliveryPINHash   string           `json:"deliveryPinHash"`
+	CreatedAt         string           `json:"createdAt"`
+	DeliveredAt       string           `json:"deliveredAt,omitempty"`
+	EscrowLocked      bool             `json:"escrowLocked"`
+	RestaurantPayout  float64          `json:"restaurantPayout,omitempty"`
+	CourierPayout     float64          `json:"courierPayout,omitempty"`
 }
 
 type LedgerEntryType string
@@ -232,11 +232,11 @@ type RiderProfile struct {
 }
 
 type Coupon struct {
-	Code         string   `json:"code"`
-	DiscountEUR  *float64 `json:"discountEUR,omitempty"`
-	DiscountPct  *float64 `json:"discountPct,omitempty"`
-	MinOrderEUR  float64  `json:"minOrderEUR"`
-	MaxUses      int      `json:"maxUses"`
-	TimesUsed    int      `json:"timesUsed"`
-	IsActive     bool     `json:"isActive"`
+	Code        string   `json:"code"`
+	DiscountEUR *float64 `json:"discountEUR,omitempty"`
+	DiscountPct *float64 `json:"discountPct,omitempty"`
+	MinOrderEUR float64  `json:"minOrderEUR"`
+	MaxUses     int      `json:"maxUses"`
+	TimesUsed   int      `json:"timesUsed"`
+	IsActive    bool     `json:"isActive"`
 }
