@@ -8,11 +8,26 @@ import (
 	"oengo-api/internal/handlers"
 	"oengo-api/internal/services"
 	"oengo-api/internal/store"
+	"oengo-api/internal/db"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
 )
 
 func main() {
 	cfg := config.LoadConfig()
-	st := store.NewStore(cfg)
+
+	log.Println("Connecting to PostgreSQL database...")
+	gormDB, err := gorm.Open(postgres.Open(cfg.DatabaseDSN), &gorm.Config{})
+	if err != nil {
+		log.Printf("Warning: Failed to connect to DB, continuing with nil DB. Err: %v", err)
+	} else {
+		log.Println("Database connected successfully. Running migrations...")
+		if err := db.AutoMigrateBankingSchema(gormDB); err != nil {
+			log.Fatalf("Fatal: Database migration failed: %v", err)
+		}
+	}
+
+	st := store.NewStore(cfg, gormDB)
 	svc := services.NewServices(st, cfg)
 	router := handlers.SetupRouter(svc)
 

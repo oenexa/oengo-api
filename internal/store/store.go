@@ -9,10 +9,12 @@ import (
 
 	"oengo-api/internal/config"
 	"oengo-api/internal/models"
+	"gorm.io/gorm"
 )
 
 type Store struct {
 	mu               sync.RWMutex
+	DB               *gorm.DB
 	cfg              *config.Config
 	Users            map[string]*models.User
 	CustomerProfiles map[string]*models.CustomerProfile
@@ -32,9 +34,10 @@ func Sha256Hash(input string) string {
 	return hex.EncodeToString(h[:])
 }
 
-func NewStore(cfg *config.Config) *Store {
+func NewStore(cfg *config.Config, db *gorm.DB) *Store {
 	s := &Store{
 		cfg:              cfg,
+		DB:               db,
 		Users:            make(map[string]*models.User),
 		CustomerProfiles: make(map[string]*models.CustomerProfile),
 		Restaurants:      make(map[string]*models.Restaurant),
