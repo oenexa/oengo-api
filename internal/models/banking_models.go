@@ -1,6 +1,7 @@
 package models
 
 import (
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -55,7 +56,7 @@ type BankingWallet struct {
 	
 	// Balance is the CACHED sum of LedgerEntries. 
 	// True balance is always calculated from the immutable Ledger.
-	Balance   decimal.Decimal `gorm:"type:numeric(19,4);not null;default:0.0000" json:"balance"`
+	Balance   decimal.Decimal `gorm:"type:numeric(28,8);not null;default:0.00000000;check:balance >= 0" json:"balance"`
 	Currency  string          `gorm:"type:varchar(5);not null;default:'EUR'" json:"currency"`
 
 	// Double-entry account mapping
@@ -86,12 +87,24 @@ type LedgerAccount struct {
 // LedgerTransaction groups multiple entries (debits/credits) that must balance to zero
 type LedgerTransaction struct {
 	BaseModel
+	IdempotencyKey string    `gorm:"type:varchar(100);uniqueIndex;not null" json:"idempotencyKey"` // Prevents double-billing
 	ReferenceID   uuid.UUID `gorm:"type:uuid;index" json:"referenceId"` // Maps to OrderID or external reference
 	ReferenceType string    `gorm:"type:varchar(50)" json:"referenceType"`
 	Description   string    `gorm:"type:varchar(255)" json:"description"`
 	Status        string    `gorm:"type:varchar(20);not null;default:'POSTED'" json:"status"`
 	
+	// Cryptographic Audit Trail (Blockchain concept)
+	PreviousHash  string    `gorm:"type:varchar(64);not null" json:"previousHash"`
+	Hash          string    `gorm:"type:varchar(64);not null" json:"hash"`
+
 	Entries       []LedgerEntryRecord `gorm:"foreignKey:TransactionID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT;" json:"entries"`
+}
+
+func (t *LedgerTransaction) BeforeUpdate(tx *gorm.DB) (err error) {
+	return errors.New("LedgerTransaction is immutable and cannot be updated")
+}
+func (t *LedgerTransaction) BeforeDelete(tx *gorm.DB) (err error) {
+	return errors.New("LedgerTransaction is immutable and cannot be deleted")
 }
 
 type EntryDirection string
@@ -103,11 +116,18 @@ const (
 // LedgerEntryRecord is the immutable audit line-item
 type LedgerEntryRecord struct {
 	BaseModel
-	TransactionID uuid.UUID      `gorm:"type:uuid;not null;index" json:"transactionId"`
-	AccountID     uuid.UUID      `gorm:"type:uuid;not null;index" json:"accountId"`
-	Amount        decimal.Decimal `gorm:"type:numeric(19,4);not null" json:"amount"`
+	TransactionID uuid.UUID       `gorm:"type:uuid;not null;index" json:"transactionId"`
+	AccountID     uuid.UUID       `gorm:"type:uuid;not null;index" json:"accountId"`
+	Amount        decimal.Decimal `gorm:"type:numeric(28,8);not null" json:"amount"`
 	Direction     EntryDirection  `gorm:"type:varchar(10);not null" json:"direction"`
 	Currency      string          `gorm:"type:varchar(5);not null;default:'EUR'" json:"currency"`
+}
+
+func (e *LedgerEntryRecord) BeforeUpdate(tx *gorm.DB) (err error) {
+	return errors.New("LedgerEntryRecord is immutable and cannot be updated")
+}
+func (e *LedgerEntryRecord) BeforeDelete(tx *gorm.DB) (err error) {
+	return errors.New("LedgerEntryRecord is immutable and cannot be deleted")
 }
 
 // -----------------------------------------------------------------------------
@@ -123,11 +143,11 @@ type BankingOrder struct {
 	
 	Status        OrderStatus     `gorm:"type:varchar(30);not null;default:'PENDING'" json:"status"`
 	
-	Subtotal      decimal.Decimal `gorm:"type:numeric(19,4);not null" json:"subtotal"`
-	DeliveryFee   decimal.Decimal `gorm:"type:numeric(19,4);not null" json:"deliveryFee"`
-	Tip           decimal.Decimal `gorm:"type:numeric(19,4);not null;default:0" json:"tip"`
-	PlatformFee   decimal.Decimal `gorm:"type:numeric(19,4);not null" json:"platformFee"`
-	TotalAmount   decimal.Decimal `gorm:"type:numeric(19,4);not null" json:"totalAmount"`
+	Subtotal      decimal.Decimal `gorm:"type:numeric(28,8);not null" json:"subtotal"`
+	DeliveryFee   decimal.Decimal `gorm:"type:numeric(28,8);not null" json:"deliveryFee"`
+	Tip           decimal.Decimal `gorm:"type:numeric(28,8);not null;default:0" json:"tip"`
+	PlatformFee   decimal.Decimal `gorm:"type:numeric(28,8);not null" json:"platformFee"`
+	TotalAmount   decimal.Decimal `gorm:"type:numeric(28,8);not null" json:"totalAmount"`
 	
 	Currency      string          `gorm:"type:varchar(5);not null;default:'EUR'" json:"currency"`
 	PaymentMethod string          `gorm:"type:varchar(50);not null" json:"paymentMethod"`
