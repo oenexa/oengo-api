@@ -2,9 +2,9 @@ package services
 
 import (
 	"fmt"
-	"time"
 
 	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 
 	"oengo-api/internal/models"
 )
@@ -17,90 +17,65 @@ type RegisterRequest struct {
 	Role     models.UserRole `json:"role"` // CUSTOMER, RESTAURANT, COURIER, ADMIN
 }
 
-func (svc *Services) RegisterUser(req RegisterRequest) (*models.User, error) {
-	svc.Store.Lock()
-	defer svc.Store.Unlock()
-
-	// Check if email already exists
-	for _, u := range svc.Store.Users {
-		if u.Email == req.Email {
-			return nil, fmt.Errorf("user with email already exists")
-		}
+func (svc *Services) RegisterUser(req RegisterRequest) (*models.BankingUser, error) {
+	// 1. Check if email exists
+	var existing models.BankingUser
+	if err := svc.Store.DB.Where("email = ?", req.Email).First(&existing).Error; err == nil {
+		return nil, fmt.Errorf("user with email already exists")
+	} else if err != gorm.ErrRecordNotFound {
+		return nil, err
 	}
 
+	// 2. Hash Password
 	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
 		return nil, err
 	}
 
-	userID := fmt.Sprintf("usr_%d", time.Now().UnixMilli())
-
-	// Initial KYC status
 	kycStatus := "PENDING"
 	if req.Role == models.RoleCustomer || req.Role == models.RoleAdmin {
-		kycStatus = "VERIFIED" // Customers/Admins auto-verified for now
+		kycStatus = "VERIFIED"
 	}
 
-	u := &models.User{
-		ID:           userID,
+	user := &models.BankingUser{
 		Name:         req.Name,
 		Email:        req.Email,
 		Phone:        req.Phone,
 		PasswordHash: string(hash),
 		Role:         req.Role,
 		KYCStatus:    kycStatus,
-		DigitalWallet: models.DigitalWallet{
-			FiatBalanceEUR: 0.0,
-		},
-	}
-	svc.Store.Users[userID] = u
-
-	// Initialize corresponding profiles based on role
-	if req.Role == models.RoleCustomer {
-		svc.Store.CustomerProfiles[userID] = &models.CustomerProfile{
-			ID:     userID,
-			Name:   req.Name,
-			Email:  req.Email,
-			Phone:  req.Phone,
-			Avatar: "👤",
-		}
-		svc.Store.Coins[userID] = &models.CoinProfile{
-			UserID:      userID,
-			CoinBalance: 0,
-		}
-	} else if req.Role == models.RoleRestaurant {
-		svc.Store.Restaurants[userID] = &models.Restaurant{
-			ID:      userID,
-			Name:    req.Name,
-			Address: "Update Address in Portal",
-			IsOpen:  false,
-		}
-	} else if req.Role == models.RoleCourier {
-		svc.Store.Riders[userID] = &models.RiderProfile{
-			ID:        userID,
-			Name:      req.Name,
-			Phone:     req.Phone,
-			KYCStatus: kycStatus,
-		}
 	}
 
-	return u, nil
+	// 3. Save to Postgres
+	if err := svc.Store.DB.Create(user).Error; err != nil {
+		return nil, err
+	}
+
+	// (Legacy support fallback to keep memory maps working during transition)
+	svc.Store.Lock()
+	svc.Store.Users[user.ID.String()] = &models.User{
+		ID:           user.ID.String(),
+		Name:         user.Name,
+		Email:        user.Email,
+		Role:         user.Role,
+	}
+	svc.Store.Unlock()
+
+	return user, nil
 }
 
-func (svc *Services) LoginUser(email, password string) (*models.User, error) {
-	svc.Store.RLock()
-	defer svc.Store.RUnlock()
-
-	for _, u := range svc.Store.Users {
-		if u.Email == email {
-			err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(password))
-			if err != nil {
-				return nil, fmt.Errorf("invalid credentials")
-			}
-			return u, nil
-		}
+func (svc *Services) LoginUser(email, password string) (*models.BankingUser, error) {
+	var user models.BankingUser
+	if err := svc.Store.DB.Where("email = ?", email).First(&user).Error; err != nil {
+		return nil, fmt.Errorf("user not found")
 	}
-	return nil, fmt.Errorf("user not found")
+
+	err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password))
+	if err != nil {
+		return nil, fmt.Errorf("invalid credentials")
+	}
+	
+	return &user, nil
 }
 
 func (svc *Services) ApproveKYC(userID string) (*models.User, error) {
