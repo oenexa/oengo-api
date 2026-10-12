@@ -20,6 +20,15 @@ func AutoMigrateBankingSchema(db *gorm.DB) error {
 		&models.LedgerTransaction{},
 		&models.LedgerEntryRecord{},
 		&models.BankingOrder{},
+		&models.User{},
+		&models.Restaurant{},
+		&models.MenuItem{},
+		&models.Order{},
+		&models.LedgerEntry{},
+		&models.CustomerProfile{},
+		&models.RiderProfile{},
+		&models.CoinProfile{},
+		&models.Coupon{},
 	)
 
 	if err != nil {

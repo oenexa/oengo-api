@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 
@@ -27,11 +28,22 @@ type RegisterRequest struct {
 
 func (svc *Services) RegisterUser(req RegisterRequest) (*models.BankingUser, error) {
 	// 1. Check if email exists
-	var existing models.BankingUser
-	if err := svc.Store.DB.Where("email = ?", req.Email).First(&existing).Error; err == nil {
-		return nil, fmt.Errorf("user with email already exists")
-	} else if err != gorm.ErrRecordNotFound {
-		return nil, err
+	if svc.Store.DB != nil {
+		var existing models.BankingUser
+		if err := svc.Store.DB.Where("email = ?", req.Email).First(&existing).Error; err == nil {
+			return nil, fmt.Errorf("user with email already exists")
+		} else if err != gorm.ErrRecordNotFound {
+			return nil, err
+		}
+	} else {
+		svc.Store.RLock()
+		for _, u := range svc.Store.Users {
+			if u.Email == req.Email {
+				svc.Store.RUnlock()
+				return nil, fmt.Errorf("user with email already exists")
+			}
+		}
+		svc.Store.RUnlock()
 	}
 
 	// 2. Hash Password
@@ -74,18 +86,35 @@ func (svc *Services) RegisterUser(req RegisterRequest) (*models.BankingUser, err
 		GDPRConsentAt:   consentTime,
 	}
 
-	// 3. Save to Postgres
-	if err := svc.Store.DB.Create(user).Error; err != nil {
-		return nil, err
+	// 3. Save to Postgres if DB is connected
+	if svc.Store.DB != nil {
+		if err := svc.Store.DB.Create(user).Error; err != nil {
+			return nil, err
+		}
+	} else {
+		// Mock UUID for testing
+		user.ID = uuid.New()
 	}
 
-	// (Legacy support fallback to keep memory maps working during transition)
+	// (Synchronize with memory map)
 	svc.Store.Lock()
 	svc.Store.Users[user.ID.String()] = &models.User{
 		ID:           user.ID.String(),
 		Name:         user.Name,
 		Email:        user.Email,
+		Phone:        user.Phone,
+		PasswordHash: user.PasswordHash,
 		Role:         user.Role,
+		KYCStatus:    user.KYCStatus,
+	}
+	if user.Role == models.RoleCourier {
+		svc.Store.Riders[user.ID.String()] = &models.RiderProfile{
+			ID:        user.ID.String(),
+			Name:      user.Name,
+			Phone:     user.Phone,
+			KYCStatus: user.KYCStatus,
+			IsOnline:  true,
+		}
 	}
 	svc.Store.Unlock()
 
@@ -93,72 +122,120 @@ func (svc *Services) RegisterUser(req RegisterRequest) (*models.BankingUser, err
 }
 
 func (svc *Services) LoginUser(email, password string) (*models.BankingUser, error) {
-	var user models.BankingUser
-	if err := svc.Store.DB.Where("email = ?", email).First(&user).Error; err != nil {
-		return nil, fmt.Errorf("user not found")
+	if svc.Store.DB != nil {
+		var user models.BankingUser
+		if err := svc.Store.DB.Where("email = ?", email).First(&user).Error; err != nil {
+			return nil, fmt.Errorf("user not found")
+		}
+
+		err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password))
+		if err != nil {
+			return nil, fmt.Errorf("invalid credentials")
+		}
+		
+		return &user, nil
 	}
 
-	err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password))
-	if err != nil {
-		return nil, fmt.Errorf("invalid credentials")
+	// In-memory fallback
+	svc.Store.RLock()
+	defer svc.Store.RUnlock()
+	for _, u := range svc.Store.Users {
+		if u.Email == email {
+			err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(password))
+			if err != nil {
+				return nil, fmt.Errorf("invalid credentials")
+			}
+			uid, _ := uuid.Parse(u.ID)
+			return &models.BankingUser{
+				BaseModel: models.BaseModel{ID: uid},
+				Name:      u.Name,
+				Email:     u.Email,
+				Phone:     u.Phone,
+				Role:      u.Role,
+				KYCStatus: u.KYCStatus,
+			}, nil
+		}
 	}
-	
-	return &user, nil
+	return nil, fmt.Errorf("user not found")
 }
 
 // LoginOrRegisterOAuth supports seamless single-click Google/Gmail and Passkey authentication
 func (svc *Services) LoginOrRegisterOAuth(name, email, provider, providerID string, role models.UserRole) (*models.BankingUser, error) {
-	var user models.BankingUser
-	err := svc.Store.DB.Where("email = ?", email).First(&user).Error
+	if svc.Store.DB != nil {
+		var user models.BankingUser
+		err := svc.Store.DB.Where("email = ?", email).First(&user).Error
 
-	if err == nil {
-		// User exists, update auth provider if needed
-		if user.AuthProvider == "" || user.AuthProvider == "LOCAL" {
-			user.AuthProvider = provider
-			user.ProviderID = providerID
-			svc.Store.DB.Save(&user)
+		if err == nil {
+			// User exists, update auth provider if needed
+			if user.AuthProvider == "" || user.AuthProvider == "LOCAL" {
+				user.AuthProvider = provider
+				user.ProviderID = providerID
+				svc.Store.DB.Save(&user)
+			}
+			return &user, nil
+		} else if err != gorm.ErrRecordNotFound {
+			return nil, err
 		}
-		return &user, nil
-	} else if err != gorm.ErrRecordNotFound {
-		return nil, err
+
+		// New user registration via OAuth
+		now := time.Now().UTC()
+		kycStatus := "PENDING"
+		kycTier := 0
+		if role == models.RoleCustomer || role == models.RoleAdmin {
+			kycStatus = "VERIFIED"
+			kycTier = 1
+		}
+
+		newUser := &models.BankingUser{
+			Name:          name,
+			Email:         email,
+			Role:          role,
+			KYCStatus:     kycStatus,
+			KYCTier:       kycTier,
+			AuthProvider:  provider,
+			ProviderID:    providerID,
+			GDPRConsentAt: &now,
+			Country:       "IT",
+		}
+
+		if err := svc.Store.DB.Create(newUser).Error; err != nil {
+			return nil, err
+		}
+
+		// Synchronize with legacy in-memory user map
+		svc.Store.Lock()
+		svc.Store.Users[newUser.ID.String()] = &models.User{
+			ID:        newUser.ID.String(),
+			Name:      newUser.Name,
+			Email:     newUser.Email,
+			Role:      newUser.Role,
+			KYCStatus: newUser.KYCStatus,
+		}
+		svc.Store.Unlock()
+
+		return newUser, nil
 	}
 
-	// New user registration via OAuth
-	now := time.Now().UTC()
-	kycStatus := "PENDING"
-	kycTier := 0
-	if role == models.RoleCustomer || role == models.RoleAdmin {
-		kycStatus = "VERIFIED"
-		kycTier = 1
-	}
-
+	// Memory fallback
+	uid := uuid.New()
 	newUser := &models.BankingUser{
-		Name:          name,
-		Email:         email,
-		Role:          role,
-		KYCStatus:     kycStatus,
-		KYCTier:       kycTier,
-		AuthProvider:  provider,
-		ProviderID:    providerID,
-		GDPRConsentAt: &now,
-		Country:       "IT",
+		BaseModel:    models.BaseModel{ID: uid},
+		Name:         name,
+		Email:        email,
+		Role:         role,
+		KYCStatus:    "VERIFIED",
+		AuthProvider: provider,
+		ProviderID:   providerID,
 	}
-
-	if err := svc.Store.DB.Create(newUser).Error; err != nil {
-		return nil, err
-	}
-
-	// Synchronize with legacy in-memory user map
 	svc.Store.Lock()
-	svc.Store.Users[newUser.ID.String()] = &models.User{
-		ID:        newUser.ID.String(),
-		Name:      newUser.Name,
-		Email:     newUser.Email,
-		Role:      newUser.Role,
-		KYCStatus: newUser.KYCStatus,
+	svc.Store.Users[uid.String()] = &models.User{
+		ID:        uid.String(),
+		Name:      name,
+		Email:     email,
+		Role:      role,
+		KYCStatus: "VERIFIED",
 	}
 	svc.Store.Unlock()
-
 	return newUser, nil
 }
 

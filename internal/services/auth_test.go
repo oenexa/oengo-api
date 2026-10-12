@@ -50,7 +50,7 @@ func TestAuthAndKYC(t *testing.T) {
 	}
 
 	// Test KYC Approval
-	approvedUser, err := svc.ApproveKYC(user.ID)
+	approvedUser, err := svc.ApproveKYC(user.ID.String())
 	if err != nil {
 		t.Fatalf("Expected successful KYC approval, got %v", err)
 	}
@@ -59,7 +59,7 @@ func TestAuthAndKYC(t *testing.T) {
 	}
 
 	// Verify Courier Profile is also verified
-	rider, err := svc.GetRiderProfile(user.ID)
+	rider, err := svc.GetRiderProfile(user.ID.String())
 	if err != nil {
 		t.Fatalf("Expected to find rider profile")
 	}

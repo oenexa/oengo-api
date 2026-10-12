@@ -12,22 +12,22 @@ const (
 )
 
 type DigitalWallet struct {
-	FiatBalanceEUR   float64 `json:"fiatBalanceEUR"`
-	LockedBalanceEUR float64 `json:"lockedBalanceEUR"`
-	LoyaltyPoints    int     `json:"loyaltyPoints"`
-	CashbackRatePct  float64 `json:"cashbackRatePct"`
+	FiatBalanceEUR   float64 `json:"fiatBalanceEUR" gorm:"default:0"`
+	LockedBalanceEUR float64 `json:"lockedBalanceEUR" gorm:"default:0"`
+	LoyaltyPoints    int     `json:"loyaltyPoints" gorm:"default:0"`
+	CashbackRatePct  float64 `json:"cashbackRatePct" gorm:"default:0"`
 }
 
 type User struct {
-	ID                  string        `json:"id"`
-	Name                string        `json:"name"`
-	Email               string        `json:"email"`
-	Phone               string        `json:"phone"`
-	PasswordHash        string        `json:"-"`
-	Role                UserRole      `json:"role"`
-	DigitalWallet       DigitalWallet `json:"digitalWallet"`
-	CryptoWalletAddress string        `json:"cryptoWalletAddress"`
-	KYCStatus           string        `json:"kycStatus,omitempty"`
+	ID                  string        `json:"id" gorm:"primaryKey;type:varchar(100)"`
+	Name                string        `json:"name" gorm:"type:varchar(255)"`
+	Email               string        `json:"email" gorm:"type:varchar(255);uniqueIndex"`
+	Phone               string        `json:"phone" gorm:"type:varchar(50)"`
+	PasswordHash        string        `json:"-" gorm:"type:varchar(255)"`
+	Role                UserRole      `json:"role" gorm:"type:varchar(50)"`
+	DigitalWallet       DigitalWallet `json:"digitalWallet" gorm:"embedded"`
+	CryptoWalletAddress string        `json:"cryptoWalletAddress" gorm:"type:varchar(100)"`
+	KYCStatus           string        `json:"kycStatus,omitempty" gorm:"type:varchar(50)"`
 }
 
 type SavedAddress struct {
@@ -41,14 +41,14 @@ type SavedAddress struct {
 }
 
 type CustomerProfile struct {
-	ID                  string         `json:"id"`
-	Name                string         `json:"name"`
-	Email               string         `json:"email"`
-	Phone               string         `json:"phone"`
-	Avatar              string         `json:"avatar"`
-	SavedAddresses      []SavedAddress `json:"savedAddresses"`
-	FavoriteRestaurants []string       `json:"favoriteRestaurants"`
-	FavoriteFoods       []string       `json:"favoriteFoods"`
+	ID                  string         `json:"id" gorm:"primaryKey;type:varchar(100)"`
+	Name                string         `json:"name" gorm:"type:varchar(255)"`
+	Email               string         `json:"email" gorm:"type:varchar(255)"`
+	Phone               string         `json:"phone" gorm:"type:varchar(50)"`
+	Avatar              string         `json:"avatar" gorm:"type:varchar(255)"`
+	SavedAddresses      []SavedAddress `json:"savedAddresses" gorm:"serializer:json"`
+	FavoriteRestaurants []string       `json:"favoriteRestaurants" gorm:"serializer:json"`
+	FavoriteFoods       []string       `json:"favoriteFoods" gorm:"serializer:json"`
 }
 
 type CustomizationOption struct {
@@ -63,20 +63,21 @@ type CustomizationGroup struct {
 }
 
 type MenuItem struct {
-	ID                string               `json:"id"`
-	Category          string               `json:"category"`
-	Name              string               `json:"name"`
-	Description       string               `json:"description"`
-	PriceEUR          float64              `json:"priceEUR"`
-	PriceOEN          string               `json:"priceOEN"`
-	InStock           bool                 `json:"inStock"`
-	StockQuantity     int                  `json:"stockQuantity"`
-	LowStockThreshold int                  `json:"lowStockThreshold"`
-	PrepMinutes       int                  `json:"prepMinutes"`
-	Badge             string               `json:"badge"`
-	Calories          int                  `json:"calories"`
-	Ingredients       string               `json:"ingredients"`
-	Customizations    []CustomizationGroup `json:"customizations"`
+	ID                string               `json:"id" gorm:"primaryKey;type:varchar(100)"`
+	RestaurantID      string               `json:"restaurantId,omitempty" gorm:"type:varchar(100);index"`
+	Category          string               `json:"category" gorm:"type:varchar(100)"`
+	Name              string               `json:"name" gorm:"type:varchar(255);not null"`
+	Description       string               `json:"description" gorm:"type:text"`
+	PriceEUR          float64              `json:"priceEUR" gorm:"type:numeric(10,2);not null"`
+	PriceOEN          string               `json:"priceOEN" gorm:"type:varchar(50)"`
+	InStock           bool                 `json:"inStock" gorm:"default:true"`
+	StockQuantity     int                  `json:"stockQuantity" gorm:"default:20"`
+	LowStockThreshold int                  `json:"lowStockThreshold" gorm:"default:5"`
+	PrepMinutes       int                  `json:"prepMinutes" gorm:"default:15"`
+	Badge             string               `json:"badge" gorm:"type:varchar(50)"`
+	Calories          int                  `json:"calories" gorm:"default:0"`
+	Ingredients       string               `json:"ingredients" gorm:"type:text"`
+	Customizations    []CustomizationGroup `json:"customizations" gorm:"serializer:json"`
 }
 
 type RestaurantStats struct {
@@ -92,24 +93,24 @@ type RestaurantStats struct {
 }
 
 type Restaurant struct {
-	ID                  string           `json:"id"`
-	Name                string           `json:"name"`
-	Tagline             string           `json:"tagline"`
-	Cuisine             string           `json:"cuisine"`
-	Rating              float64          `json:"rating"`
-	ReviewCount         int              `json:"reviewCount"`
-	Address             string           `json:"address"`
-	Icon                string           `json:"icon"`
-	IsOpen              bool             `json:"isOpen"`
-	PrepEtaMinutes      int              `json:"prepEtaMinutes"`
-	DeliveryFeeEUR      float64          `json:"deliveryFeeEUR"`
-	MinOrderEUR         float64          `json:"minOrderEUR"`
-	DeliveryRadiusKm    float64          `json:"deliveryRadiusKm"`
-	TaxNumber           string           `json:"taxNumber"`
-	VATNumber           string           `json:"vatNumber"`
-	CryptoWalletAddress string           `json:"cryptoWalletAddress"`
-	FiatBalanceEUR      float64          `json:"fiatBalanceEUR"`
-	Stats               *RestaurantStats `json:"stats,omitempty"`
+	ID                  string           `json:"id" gorm:"primaryKey;type:varchar(100)"`
+	Name                string           `json:"name" gorm:"type:varchar(255);not null"`
+	Tagline             string           `json:"tagline" gorm:"type:varchar(255)"`
+	Cuisine             string           `json:"cuisine" gorm:"type:varchar(100);index"`
+	Rating              float64          `json:"rating" gorm:"default:4.8"`
+	ReviewCount         int              `json:"reviewCount" gorm:"default:0"`
+	Address             string           `json:"address" gorm:"type:varchar(255)"`
+	Icon                string           `json:"icon" gorm:"type:varchar(50)"`
+	IsOpen              bool             `json:"isOpen" gorm:"default:true"`
+	PrepEtaMinutes      int              `json:"prepEtaMinutes" gorm:"default:20"`
+	DeliveryFeeEUR      float64          `json:"deliveryFeeEUR" gorm:"default:2.50"`
+	MinOrderEUR         float64          `json:"minOrderEUR" gorm:"default:10.00"`
+	DeliveryRadiusKm    float64          `json:"deliveryRadiusKm" gorm:"default:5.0"`
+	TaxNumber           string           `json:"taxNumber" gorm:"type:varchar(50)"`
+	VATNumber           string           `json:"vatNumber" gorm:"type:varchar(50)"`
+	CryptoWalletAddress string           `json:"cryptoWalletAddress" gorm:"type:varchar(100)"`
+	FiatBalanceEUR      float64          `json:"fiatBalanceEUR" gorm:"default:0"`
+	Stats               *RestaurantStats `json:"stats,omitempty" gorm:"-"`
 }
 
 type CustomizationChoice struct {
@@ -146,34 +147,34 @@ const (
 )
 
 type Order struct {
-	ID                string           `json:"id"`
-	BuyerID           string           `json:"buyerId"`
-	BuyerName         string           `json:"buyerName"`
-	BuyerAddress      string           `json:"buyerAddress"`
-	RestaurantID      string           `json:"restaurantId"`
-	RestaurantAddress string           `json:"restaurantAddress"`
-	CourierID         string           `json:"courierId,omitempty"`
-	CourierAddress    string           `json:"courierAddress,omitempty"`
-	Items             []OrderItem      `json:"items"`
-	Amount            float64          `json:"amount"`
-	DeliveryFee       float64          `json:"deliveryFee"`
-	Tip               float64          `json:"tip"`
-	DiscountEUR       float64          `json:"discountEUR"`
-	Total             float64          `json:"total"`
-	CommissionPct     float64          `json:"commissionPct"`
-	PaymentMethod     string           `json:"paymentMethod"`
-	CardPayment       *CardPaymentInfo `json:"cardPayment,omitempty"`
-	PaymentStatus     string           `json:"paymentStatus"`
-	Status            OrderStatus      `json:"status"`
-	PickupBarcode     string           `json:"pickupBarcode"`
-	PickupBarcodeHash string           `json:"pickupBarcodeHash"`
-	DeliveryPIN       string           `json:"deliveryPin"`
-	DeliveryPINHash   string           `json:"deliveryPinHash"`
-	CreatedAt         string           `json:"createdAt"`
-	DeliveredAt       string           `json:"deliveredAt,omitempty"`
-	EscrowLocked      bool             `json:"escrowLocked"`
-	RestaurantPayout  float64          `json:"restaurantPayout,omitempty"`
-	CourierPayout     float64          `json:"courierPayout,omitempty"`
+	ID                string           `json:"id" gorm:"primaryKey;type:varchar(100)"`
+	BuyerID           string           `json:"buyerId" gorm:"type:varchar(100);index"`
+	BuyerName         string           `json:"buyerName" gorm:"type:varchar(255)"`
+	BuyerAddress      string           `json:"buyerAddress" gorm:"type:varchar(255)"`
+	RestaurantID      string           `json:"restaurantId" gorm:"type:varchar(100);index"`
+	RestaurantAddress string           `json:"restaurantAddress" gorm:"type:varchar(255)"`
+	CourierID         string           `json:"courierId,omitempty" gorm:"type:varchar(100);index"`
+	CourierAddress    string           `json:"courierAddress,omitempty" gorm:"type:varchar(255)"`
+	Items             []OrderItem      `json:"items" gorm:"serializer:json"`
+	Amount            float64          `json:"amount" gorm:"type:numeric(10,2);not null"`
+	DeliveryFee       float64          `json:"deliveryFee" gorm:"type:numeric(10,2)"`
+	Tip               float64          `json:"tip" gorm:"type:numeric(10,2)"`
+	DiscountEUR       float64          `json:"discountEUR" gorm:"type:numeric(10,2)"`
+	Total             float64          `json:"total" gorm:"type:numeric(10,2);not null"`
+	CommissionPct     float64          `json:"commissionPct" gorm:"type:numeric(5,2)"`
+	PaymentMethod     string           `json:"paymentMethod" gorm:"type:varchar(50)"`
+	CardPayment       *CardPaymentInfo `json:"cardPayment,omitempty" gorm:"serializer:json"`
+	PaymentStatus     string           `json:"paymentStatus" gorm:"type:varchar(50)"`
+	Status            OrderStatus      `json:"status" gorm:"type:varchar(50);index"`
+	PickupBarcode     string           `json:"pickupBarcode" gorm:"type:varchar(100)"`
+	PickupBarcodeHash string           `json:"pickupBarcodeHash" gorm:"type:varchar(100)"`
+	DeliveryPIN       string           `json:"deliveryPin" gorm:"type:varchar(10)"`
+	DeliveryPINHash   string           `json:"deliveryPinHash" gorm:"type:varchar(100)"`
+	CreatedAt         string           `json:"createdAt" gorm:"type:varchar(100)"`
+	DeliveredAt       string           `json:"deliveredAt,omitempty" gorm:"type:varchar(100)"`
+	EscrowLocked      bool             `json:"escrowLocked" gorm:"default:true"`
+	RestaurantPayout  float64          `json:"restaurantPayout,omitempty" gorm:"type:numeric(10,2)"`
+	CourierPayout     float64          `json:"courierPayout,omitempty" gorm:"type:numeric(10,2)"`
 }
 
 type LedgerEntryType string
@@ -184,13 +185,13 @@ const (
 )
 
 type LedgerEntry struct {
-	ID          string          `json:"id"`
-	TxID        string          `json:"txId"`
-	AccountCode string          `json:"accountCode"` // 1001, 1002, 1003, 2001, 2002, 3001, 3002
-	EntryType   LedgerEntryType `json:"entryType"`
-	AmountEUR   float64         `json:"amountEUR"`
-	Description string          `json:"description"`
-	CreatedAt   string          `json:"createdAt"`
+	ID          string          `json:"id" gorm:"primaryKey;type:varchar(100)"`
+	TxID        string          `json:"txId" gorm:"type:varchar(100);index"`
+	AccountCode string          `json:"accountCode" gorm:"type:varchar(50);index"`
+	EntryType   LedgerEntryType `json:"entryType" gorm:"type:varchar(20)"`
+	AmountEUR   float64         `json:"amountEUR" gorm:"type:numeric(10,2);not null"`
+	Description string          `json:"description" gorm:"type:varchar(255)"`
+	CreatedAt   string          `json:"createdAt" gorm:"type:varchar(100)"`
 }
 
 type CoinTx struct {
@@ -203,11 +204,11 @@ type CoinTx struct {
 }
 
 type CoinProfile struct {
-	UserID       string   `json:"userId"`
-	CoinBalance  int64    `json:"coinBalance"`
-	TotalEarned  int64    `json:"totalEarned"`
-	TotalSpent   int64    `json:"totalSpent"`
-	Transactions []CoinTx `json:"transactions"`
+	UserID       string   `json:"userId" gorm:"primaryKey;type:varchar(100)"`
+	CoinBalance  int64    `json:"coinBalance" gorm:"default:0"`
+	TotalEarned  int64    `json:"totalEarned" gorm:"default:0"`
+	TotalSpent   int64    `json:"totalSpent" gorm:"default:0"`
+	Transactions []CoinTx `json:"transactions" gorm:"serializer:json"`
 }
 
 type Location struct {
@@ -218,25 +219,25 @@ type Location struct {
 }
 
 type RiderProfile struct {
-	ID               string   `json:"id"`
-	Name             string   `json:"name"`
-	Phone            string   `json:"phone"`
-	IsOnline         bool     `json:"isOnline"`
-	VehicleType      string   `json:"vehicleType"`
-	VehiclePlate     string   `json:"vehiclePlate"`
-	KYCStatus        string   `json:"kycStatus"`
-	Rating           float64  `json:"rating"`
-	TotalDeliveries  int      `json:"totalDeliveries"`
-	TodayEarningsEUR float64  `json:"todayEarningsEUR"`
-	CurrentLocation  Location `json:"currentLocation"`
+	ID               string   `json:"id" gorm:"primaryKey;type:varchar(100)"`
+	Name             string   `json:"name" gorm:"type:varchar(255)"`
+	Phone            string   `json:"phone" gorm:"type:varchar(50)"`
+	IsOnline         bool     `json:"isOnline" gorm:"default:false"`
+	VehicleType      string   `json:"vehicleType" gorm:"type:varchar(50)"`
+	VehiclePlate     string   `json:"vehiclePlate" gorm:"type:varchar(50)"`
+	KYCStatus        string   `json:"kycStatus" gorm:"type:varchar(50)"`
+	Rating           float64  `json:"rating" gorm:"default:4.9"`
+	TotalDeliveries  int      `json:"totalDeliveries" gorm:"default:0"`
+	TodayEarningsEUR float64  `json:"todayEarningsEUR" gorm:"default:0"`
+	CurrentLocation  Location `json:"currentLocation" gorm:"serializer:json"`
 }
 
 type Coupon struct {
-	Code        string   `json:"code"`
-	DiscountEUR *float64 `json:"discountEUR,omitempty"`
-	DiscountPct *float64 `json:"discountPct,omitempty"`
-	MinOrderEUR float64  `json:"minOrderEUR"`
-	MaxUses     int      `json:"maxUses"`
-	TimesUsed   int      `json:"timesUsed"`
-	IsActive    bool     `json:"isActive"`
+	Code        string   `json:"code" gorm:"primaryKey;type:varchar(50)"`
+	DiscountEUR *float64 `json:"discountEUR,omitempty" gorm:"type:numeric(10,2)"`
+	DiscountPct *float64 `json:"discountPct,omitempty" gorm:"type:numeric(5,2)"`
+	MinOrderEUR float64  `json:"minOrderEUR" gorm:"type:numeric(10,2);default:0"`
+	MaxUses     int      `json:"maxUses" gorm:"default:0"`
+	TimesUsed   int      `json:"timesUsed" gorm:"default:0"`
+	IsActive    bool     `json:"isActive" gorm:"default:true"`
 }

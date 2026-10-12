@@ -25,7 +25,10 @@ func setupTestApp() (*handlers.Router, *services.Services) {
 	st.Users["user_courier"] = &models.User{ID: "user_courier", Role: "COURIER", KYCStatus: "VERIFIED"}
 	st.Coins["user_customer"] = &models.CoinProfile{UserID: "user_customer", CoinBalance: 1000}
 	
-	st.Restaurants["user_restaurant"] = &models.Restaurant{ID: "user_restaurant", Name: "Test Rest"}
+	st.Restaurants["user_restaurant"] = &models.Restaurant{ID: "user_restaurant", Name: "Test Rest 1", Cuisine: "Italian"}
+	st.Restaurants["user_restaurant_2"] = &models.Restaurant{ID: "user_restaurant_2", Name: "Test Rest 2", Cuisine: "Pizza"}
+	st.Restaurants["user_restaurant_3"] = &models.Restaurant{ID: "user_restaurant_3", Name: "Test Rest 3", Cuisine: "Burger"}
+	st.Restaurants["user_restaurant_4"] = &models.Restaurant{ID: "user_restaurant_4", Name: "Test Rest 4", Cuisine: "Sushi"}
 	st.Menus["user_restaurant"] = []models.MenuItem{{ID: "item_1", Name: "Pizza", PriceEUR: 10.0}}
 	st.Riders["user_courier"] = &models.RiderProfile{ID: "user_courier", IsOnline: true}
 	

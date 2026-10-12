@@ -4,12 +4,14 @@ import (
 	"context"
 	"log"
 	"testing"
+	"time"
 
 	"oengo-api/internal/db"
 	"oengo-api/internal/models"
 
 	"github.com/testcontainers/testcontainers-go"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
+	"github.com/testcontainers/testcontainers-go/wait"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
@@ -17,12 +19,16 @@ import (
 func TestBankingSchemaMigration(t *testing.T) {
 	ctx := context.Background()
 
-	// 1. Spin up ephemeral Testcontainer
-	pgContainer, err := tcpostgres.RunContainer(ctx,
-		testcontainers.WithImage("postgres:15.3-alpine"),
+	// 1. Spin up ephemeral Testcontainer with ready wait strategy
+	pgContainer, err := tcpostgres.Run(ctx,
+		"postgres:15.3-alpine",
 		tcpostgres.WithDatabase("oengo_test"),
 		tcpostgres.WithUsername("testuser"),
 		tcpostgres.WithPassword("testpass"),
+		testcontainers.WithWaitStrategy(
+			wait.ForLog("database system is ready to accept connections").
+				WithOccurrence(2).
+				WithStartupTimeout(10*time.Second)),
 	)
 	if err != nil {
 		t.Fatalf("failed to start postgres container: %s", err)
