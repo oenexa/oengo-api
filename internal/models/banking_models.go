@@ -33,6 +33,8 @@ type BankingUser struct {
 	KYCTier         int        `gorm:"default:0" json:"kycTier"` // 0: Unverified (Cards only), 1: Basic (EUR <€150), 2: Full (OEN Crypto & Unlimited)
 	KYCDocType      string     `gorm:"type:varchar(50)" json:"kycDocType,omitempty"`
 	KYCDocNumber    string     `gorm:"type:varchar(100)" json:"kycDocNumber,omitempty"`
+	AuthProvider    string     `gorm:"type:varchar(30);default:'LOCAL'" json:"authProvider"` // LOCAL, GOOGLE, PASSKEY, WEB3
+	ProviderID      string     `gorm:"type:varchar(255);index" json:"providerId,omitempty"`
 
 	// EU Banking & Regulatory Compliance Fields (PSD2, AMLD5, GDPR)
 	BusinessName    string     `gorm:"type:varchar(255)" json:"businessName,omitempty"`

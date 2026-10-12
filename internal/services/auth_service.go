@@ -106,6 +106,62 @@ func (svc *Services) LoginUser(email, password string) (*models.BankingUser, err
 	return &user, nil
 }
 
+// LoginOrRegisterOAuth supports seamless single-click Google/Gmail and Passkey authentication
+func (svc *Services) LoginOrRegisterOAuth(name, email, provider, providerID string, role models.UserRole) (*models.BankingUser, error) {
+	var user models.BankingUser
+	err := svc.Store.DB.Where("email = ?", email).First(&user).Error
+
+	if err == nil {
+		// User exists, update auth provider if needed
+		if user.AuthProvider == "" || user.AuthProvider == "LOCAL" {
+			user.AuthProvider = provider
+			user.ProviderID = providerID
+			svc.Store.DB.Save(&user)
+		}
+		return &user, nil
+	} else if err != gorm.ErrRecordNotFound {
+		return nil, err
+	}
+
+	// New user registration via OAuth
+	now := time.Now().UTC()
+	kycStatus := "PENDING"
+	kycTier := 0
+	if role == models.RoleCustomer || role == models.RoleAdmin {
+		kycStatus = "VERIFIED"
+		kycTier = 1
+	}
+
+	newUser := &models.BankingUser{
+		Name:          name,
+		Email:         email,
+		Role:          role,
+		KYCStatus:     kycStatus,
+		KYCTier:       kycTier,
+		AuthProvider:  provider,
+		ProviderID:    providerID,
+		GDPRConsentAt: &now,
+		Country:       "IT",
+	}
+
+	if err := svc.Store.DB.Create(newUser).Error; err != nil {
+		return nil, err
+	}
+
+	// Synchronize with legacy in-memory user map
+	svc.Store.Lock()
+	svc.Store.Users[newUser.ID.String()] = &models.User{
+		ID:        newUser.ID.String(),
+		Name:      newUser.Name,
+		Email:     newUser.Email,
+		Role:      newUser.Role,
+		KYCStatus: newUser.KYCStatus,
+	}
+	svc.Store.Unlock()
+
+	return newUser, nil
+}
+
 func (svc *Services) ApproveKYC(userID string) (*models.User, error) {
 	svc.Store.Lock()
 	defer svc.Store.Unlock()

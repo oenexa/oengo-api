@@ -72,6 +72,38 @@ func SetupRouter(svc *services.Services) *gin.Engine {
 			c.JSON(http.StatusOK, gin.H{"success": true, "user": user})
 		})
 
+		// ── SINGLE-CLICK OAUTH / GOOGLE / PASSKEY / WEB3 AUTH ──
+		api.POST("/auth/oauth", func(c *gin.Context) {
+			var req struct {
+				Name       string          `json:"name"`
+				Email      string          `json:"email"`
+				Provider   string          `json:"provider"`   // GOOGLE, PASSKEY, WEB3
+				ProviderID string          `json:"providerId"` // OAuth subject ID or public key
+				Role       models.UserRole `json:"role"`       // Default to CUSTOMER if empty
+			}
+			if err := c.ShouldBindJSON(&req); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
+			if req.Role == "" {
+				req.Role = models.RoleCustomer
+			}
+			if req.Provider == "" {
+				req.Provider = "GOOGLE"
+			}
+
+			user, err := svc.LoginOrRegisterOAuth(req.Name, req.Email, req.Provider, req.ProviderID, req.Role)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
+			c.JSON(http.StatusOK, gin.H{
+				"success": true,
+				"message": fmt.Sprintf("Authenticated successfully via %s", req.Provider),
+				"user":    user,
+			})
+		})
+
 		api.POST("/admin/kyc/:userId/approve", func(c *gin.Context) {
 			userID := c.Param("userId")
 			user, err := svc.ApproveKYC(userID)
