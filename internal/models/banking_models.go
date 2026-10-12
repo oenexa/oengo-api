@@ -24,15 +24,24 @@ type BaseModel struct {
 // BankingUser represents the strict user identity
 type BankingUser struct {
 	BaseModel
-	Name         string   `gorm:"type:varchar(255);not null" json:"name"`
-	Email        string   `gorm:"type:varchar(255);uniqueIndex;not null" json:"email"`
-	Phone        string   `gorm:"type:varchar(50)" json:"phone"`
-	PasswordHash string   `gorm:"type:varchar(255);not null" json:"-"`
-	Role         UserRole `gorm:"type:varchar(20);not null" json:"role"`
-	KYCStatus    string   `gorm:"type:varchar(20);default:'PENDING'" json:"kycStatus"`
+	Name            string     `gorm:"type:varchar(255);not null" json:"name"`
+	Email           string     `gorm:"type:varchar(255);uniqueIndex;not null" json:"email"`
+	Phone           string     `gorm:"type:varchar(50)" json:"phone"`
+	PasswordHash    string     `gorm:"type:varchar(255);not null" json:"-"`
+	Role            UserRole   `gorm:"type:varchar(20);not null" json:"role"`
+	KYCStatus       string     `gorm:"type:varchar(20);default:'PENDING'" json:"kycStatus"`
+
+	// EU Banking & Regulatory Compliance Fields (PSD2, AMLD5, GDPR)
+	BusinessName    string     `gorm:"type:varchar(255)" json:"businessName,omitempty"`
+	VatID           string     `gorm:"type:varchar(50)" json:"vatId,omitempty"` // EU VAT / VIES compliant
+	IBAN            string     `gorm:"type:varchar(34)" json:"iban,omitempty"`  // SEPA banking payout
+	BIC             string     `gorm:"type:varchar(11)" json:"bic,omitempty"`   // SWIFT / BIC code
+	BusinessAddress string     `gorm:"type:varchar(500)" json:"businessAddress,omitempty"`
+	Country         string     `gorm:"type:varchar(3);default:'IT'" json:"country,omitempty"` // ISO 3166-1 alpha-2/3
+	GDPRConsentAt   *time.Time `json:"gdprConsentAt,omitempty"`
 
 	// Relationships
-	Wallets      []BankingWallet `gorm:"foreignKey:UserID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT;" json:"wallets"`
+	Wallets         []BankingWallet `gorm:"foreignKey:UserID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT;" json:"wallets"`
 }
 
 // -----------------------------------------------------------------------------

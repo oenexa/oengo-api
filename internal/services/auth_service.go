@@ -2,6 +2,7 @@ package services
 
 import (
 	"fmt"
+	"time"
 
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
@@ -10,11 +11,18 @@ import (
 )
 
 type RegisterRequest struct {
-	Name     string          `json:"name"`
-	Email    string          `json:"email"`
-	Phone    string          `json:"phone"`
-	Password string          `json:"password"`
-	Role     models.UserRole `json:"role"` // CUSTOMER, RESTAURANT, COURIER, ADMIN
+	Name            string          `json:"name"`
+	Email           string          `json:"email"`
+	Phone           string          `json:"phone"`
+	Password        string          `json:"password"`
+	Role            models.UserRole `json:"role"` // CUSTOMER, RESTAURANT, COURIER, ADMIN
+	BusinessName    string          `json:"businessName,omitempty"`
+	VatID           string          `json:"vatId,omitempty"`
+	IBAN            string          `json:"iban,omitempty"`
+	BIC             string          `json:"bic,omitempty"`
+	BusinessAddress string          `json:"businessAddress,omitempty"`
+	Country         string          `json:"country,omitempty"`
+	GDPRConsent     bool            `json:"gdprConsent,omitempty"`
 }
 
 func (svc *Services) RegisterUser(req RegisterRequest) (*models.BankingUser, error) {
@@ -32,18 +40,38 @@ func (svc *Services) RegisterUser(req RegisterRequest) (*models.BankingUser, err
 		return nil, err
 	}
 
+	// Under EU Anti-Money Laundering (AMLD5) & PSD2 regulations:
+	// Business accounts (RESTAURANT) and financial participants (COURIER) MUST be verified via KYC.
 	kycStatus := "PENDING"
 	if req.Role == models.RoleCustomer || req.Role == models.RoleAdmin {
 		kycStatus = "VERIFIED"
 	}
 
+	var consentTime *time.Time
+	if req.GDPRConsent {
+		now := time.Now().UTC()
+		consentTime = &now
+	}
+
+	country := req.Country
+	if country == "" {
+		country = "IT"
+	}
+
 	user := &models.BankingUser{
-		Name:         req.Name,
-		Email:        req.Email,
-		Phone:        req.Phone,
-		PasswordHash: string(hash),
-		Role:         req.Role,
-		KYCStatus:    kycStatus,
+		Name:            req.Name,
+		Email:           req.Email,
+		Phone:           req.Phone,
+		PasswordHash:    string(hash),
+		Role:            req.Role,
+		KYCStatus:       kycStatus,
+		BusinessName:    req.BusinessName,
+		VatID:           req.VatID,
+		IBAN:            req.IBAN,
+		BIC:             req.BIC,
+		BusinessAddress: req.BusinessAddress,
+		Country:         country,
+		GDPRConsentAt:   consentTime,
 	}
 
 	// 3. Save to Postgres
