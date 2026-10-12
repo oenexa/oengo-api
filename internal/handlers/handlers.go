@@ -82,6 +82,37 @@ func SetupRouter(svc *services.Services) *gin.Engine {
 			c.JSON(http.StatusOK, gin.H{"success": true, "user": user})
 		})
 
+		// Customer Tiered KYC Submission (EU AMLD5 / MiCA Crypto Unlock)
+		api.POST("/kyc/customer/verify", func(c *gin.Context) {
+			var body struct {
+				UserID     string `json:"userId"`
+				Tier       int    `json:"tier"` // 1: EUR <150, 2: Full Crypto OEN & High Balance
+				DocType    string `json:"docType"`
+				DocNumber  string `json:"docNumber"`
+			}
+			if err := c.ShouldBindJSON(&body); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
+			if body.UserID == "" {
+				body.UserID = "user_customer"
+			}
+			if body.Tier <= 0 {
+				body.Tier = 2
+			}
+
+			user, err := svc.SubmitCustomerKYC(body.UserID, body.Tier, body.DocType, body.DocNumber)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
+			c.JSON(http.StatusOK, gin.H{
+				"success": true,
+				"message": "Customer KYC Tier upgraded successfully. Wallet & Coin features fully unlocked.",
+				"user":    user,
+			})
+		})
+
 		// ── RESTAURANTS & MENUS ──
 		api.GET("/restaurants", func(c *gin.Context) {
 			cuisine := c.Query("cuisine")

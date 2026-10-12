@@ -124,3 +124,41 @@ func (svc *Services) ApproveKYC(userID string) (*models.User, error) {
 	}
 	return u, nil
 }
+
+// SubmitCustomerKYC advances a customer's KYC Tier under EU AMLD5 / MiCA guidelines
+func (svc *Services) SubmitCustomerKYC(userID string, tier int, docType, docNumber string) (*models.BankingUser, error) {
+	var user models.BankingUser
+	if err := svc.Store.DB.Where("id = ? OR email = ?", userID, userID).First(&user).Error; err != nil {
+		// Fallback for demo / memory users
+		if legacyUser, ok := svc.Store.Users[userID]; ok {
+			legacyUser.KYCStatus = "VERIFIED"
+			return &models.BankingUser{
+				Name:      legacyUser.Name,
+				Email:     legacyUser.Email,
+				Role:      legacyUser.Role,
+				KYCStatus: "VERIFIED",
+				KYCTier:   tier,
+			}, nil
+		}
+		return nil, fmt.Errorf("user not found: %s", userID)
+	}
+
+	user.KYCTier = tier
+	user.KYCDocType = docType
+	user.KYCDocNumber = docNumber
+	user.KYCStatus = "VERIFIED"
+
+	if err := svc.Store.DB.Save(&user).Error; err != nil {
+		return nil, err
+	}
+
+	// Synchronize in-memory legacy mirror
+	svc.Store.Lock()
+	if memUser, ok := svc.Store.Users[user.ID.String()]; ok {
+		memUser.KYCStatus = "VERIFIED"
+	}
+	svc.Store.Unlock()
+
+	return &user, nil
+}
+

@@ -480,6 +480,12 @@ func (svc *Services) DepositWallet(userID string, amount float64) (float64, erro
 		return 0, fmt.Errorf("amount must be greater than zero")
 	}
 
+	// EU AMLD5 Regulatory Enforcement:
+	// Unverified users (Tier 0) cannot hold a cumulative wallet balance exceeding €150.00 without KYC verification.
+	if u.DigitalWallet.FiatBalanceEUR+amount > 150.0 && u.KYCStatus != "VERIFIED" {
+		return 0, fmt.Errorf("EU AMLD5 Compliance: Stored wallet balance exceeds €150 limit. Customer KYC verification required")
+	}
+
 	u.DigitalWallet.FiatBalanceEUR += amount
 
 	txID := fmt.Sprintf("dep_%d", time.Now().UnixMilli())

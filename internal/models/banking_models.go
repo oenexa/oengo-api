@@ -30,6 +30,9 @@ type BankingUser struct {
 	PasswordHash    string     `gorm:"type:varchar(255);not null" json:"-"`
 	Role            UserRole   `gorm:"type:varchar(20);not null" json:"role"`
 	KYCStatus       string     `gorm:"type:varchar(20);default:'PENDING'" json:"kycStatus"`
+	KYCTier         int        `gorm:"default:0" json:"kycTier"` // 0: Unverified (Cards only), 1: Basic (EUR <€150), 2: Full (OEN Crypto & Unlimited)
+	KYCDocType      string     `gorm:"type:varchar(50)" json:"kycDocType,omitempty"`
+	KYCDocNumber    string     `gorm:"type:varchar(100)" json:"kycDocNumber,omitempty"`
 
 	// EU Banking & Regulatory Compliance Fields (PSD2, AMLD5, GDPR)
 	BusinessName    string     `gorm:"type:varchar(255)" json:"businessName,omitempty"`
