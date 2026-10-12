@@ -2,6 +2,8 @@ package repository
 
 import (
 	"errors"
+
+	"oengo-api/internal/apperrors"
 	"oengo-api/internal/models"
 	"gorm.io/gorm"
 )
@@ -18,7 +20,7 @@ func NewPostgresUserRepository(db *gorm.DB) *PostgresUserRepository {
 
 func (r *PostgresUserRepository) CreateUser(user *models.User) error {
 	result := r.db.Create(user)
-	return result.Error
+	return apperrors.WrapDBError("CreateUser", result.Error)
 }
 
 func (r *PostgresUserRepository) GetUserByID(id string) (*models.User, error) {
@@ -27,7 +29,7 @@ func (r *PostgresUserRepository) GetUserByID(id string) (*models.User, error) {
 	if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 		return nil, nil // Not found
 	}
-	return &user, result.Error
+	return &user, apperrors.WrapDBError("GetUserByID", result.Error)
 }
 
 func (r *PostgresUserRepository) GetUserByEmail(email string) (*models.User, error) {
@@ -36,10 +38,10 @@ func (r *PostgresUserRepository) GetUserByEmail(email string) (*models.User, err
 	if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 		return nil, nil
 	}
-	return &user, result.Error
+	return &user, apperrors.WrapDBError("GetUserByEmail", result.Error)
 }
 
 func (r *PostgresUserRepository) UpdateUser(user *models.User) error {
 	result := r.db.Save(user)
-	return result.Error
+	return apperrors.WrapDBError("UpdateUser", result.Error)
 }

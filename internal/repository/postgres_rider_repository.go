@@ -3,6 +3,7 @@ package repository
 import (
 	"errors"
 
+	"oengo-api/internal/apperrors"
 	"oengo-api/internal/models"
 	"gorm.io/gorm"
 )
@@ -22,15 +23,15 @@ func (r *PostgresRiderRepository) GetRiderByID(id string) (*models.RiderProfile,
 	if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 		return nil, nil
 	}
-	return &rider, result.Error
+	return &rider, apperrors.WrapDBError("GetRiderByID", result.Error)
 }
 
 func (r *PostgresRiderRepository) SaveRider(rider *models.RiderProfile) error {
-	return r.db.Save(rider).Error
+	return apperrors.WrapDBError("SaveRider", r.db.Save(rider).Error)
 }
 
 func (r *PostgresRiderRepository) ListOnlineRiders() ([]*models.RiderProfile, error) {
 	var riders []*models.RiderProfile
 	err := r.db.Where("is_online = ?", true).Find(&riders).Error
-	return riders, err
+	return riders, apperrors.WrapDBError("ListOnlineRiders", err)
 }

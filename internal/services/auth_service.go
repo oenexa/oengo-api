@@ -1,13 +1,14 @@
 package services
 
 import (
-	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 
+	"oengo-api/internal/apperrors"
 	"oengo-api/internal/models"
 )
 
@@ -27,20 +28,33 @@ type RegisterRequest struct {
 }
 
 func (svc *Services) RegisterUser(req RegisterRequest) (*models.BankingUser, error) {
+	req.Email = strings.TrimSpace(strings.ToLower(req.Email))
+	req.Name = strings.TrimSpace(req.Name)
+
+	if req.Email == "" || !strings.Contains(req.Email, "@") {
+		return nil, apperrors.NewValidation("email", "a valid email address is required")
+	}
+	if req.Name == "" {
+		return nil, apperrors.NewValidation("name", "full name is required")
+	}
+	if len(req.Password) < 6 {
+		return nil, apperrors.NewValidation("password", "password must be at least 6 characters")
+	}
+
 	// 1. Check if email exists
 	if svc.Store.DB != nil {
 		var existing models.BankingUser
 		if err := svc.Store.DB.Where("email = ?", req.Email).First(&existing).Error; err == nil {
-			return nil, fmt.Errorf("user with email already exists")
+			return nil, apperrors.NewConflict("user with email already exists")
 		} else if err != gorm.ErrRecordNotFound {
-			return nil, err
+			return nil, apperrors.WrapDBError("check_existing_user", err)
 		}
 	} else {
 		svc.Store.RLock()
 		for _, u := range svc.Store.Users {
-			if u.Email == req.Email {
+			if strings.EqualFold(u.Email, req.Email) {
 				svc.Store.RUnlock()
-				return nil, fmt.Errorf("user with email already exists")
+				return nil, apperrors.NewConflict("user with email already exists")
 			}
 		}
 		svc.Store.RUnlock()
@@ -49,7 +63,7 @@ func (svc *Services) RegisterUser(req RegisterRequest) (*models.BankingUser, err
 	// 2. Hash Password
 	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
-		return nil, err
+		return nil, apperrors.NewInternal("failed to hash password", err)
 	}
 
 	// Under EU Anti-Money Laundering (AMLD5) & PSD2 regulations:
@@ -89,16 +103,17 @@ func (svc *Services) RegisterUser(req RegisterRequest) (*models.BankingUser, err
 	// 3. Save to Postgres if DB is connected
 	if svc.Store.DB != nil {
 		if err := svc.Store.DB.Create(user).Error; err != nil {
-			return nil, err
+			return nil, apperrors.WrapDBError("register_banking_user", err)
 		}
 	} else {
-		// Mock UUID for testing
 		user.ID = uuid.New()
 	}
 
-	// (Synchronize with memory map)
+	// 4. Synchronize with store & relational tables
 	svc.Store.Lock()
-	svc.Store.Users[user.ID.String()] = &models.User{
+	defer svc.Store.Unlock()
+
+	legacyUser := &models.User{
 		ID:           user.ID.String(),
 		Name:         user.Name,
 		Email:        user.Email,
@@ -107,32 +122,45 @@ func (svc *Services) RegisterUser(req RegisterRequest) (*models.BankingUser, err
 		Role:         user.Role,
 		KYCStatus:    user.KYCStatus,
 	}
+	if err := svc.Store.SaveUser(legacyUser); err != nil {
+		return nil, err
+	}
+
 	if user.Role == models.RoleCourier {
-		svc.Store.Riders[user.ID.String()] = &models.RiderProfile{
+		rider := &models.RiderProfile{
 			ID:        user.ID.String(),
 			Name:      user.Name,
 			Phone:     user.Phone,
 			KYCStatus: user.KYCStatus,
 			IsOnline:  true,
 		}
+		if err := svc.Store.SaveRider(rider); err != nil {
+			return nil, err
+		}
 	}
-	svc.Store.Unlock()
 
 	return user, nil
 }
 
 func (svc *Services) LoginUser(email, password string) (*models.BankingUser, error) {
+	email = strings.TrimSpace(strings.ToLower(email))
+	if email == "" || password == "" {
+		return nil, apperrors.NewValidation("credentials", "email and password are required")
+	}
+
 	if svc.Store.DB != nil {
 		var user models.BankingUser
 		if err := svc.Store.DB.Where("email = ?", email).First(&user).Error; err != nil {
-			return nil, fmt.Errorf("user not found")
+			if err == gorm.ErrRecordNotFound {
+				return nil, apperrors.NewUnauthorized("user not found")
+			}
+			return nil, apperrors.WrapDBError("login_lookup", err)
 		}
 
-		err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password))
-		if err != nil {
-			return nil, fmt.Errorf("invalid credentials")
+		if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
+			return nil, apperrors.NewUnauthorized("invalid credentials")
 		}
-		
+
 		return &user, nil
 	}
 
@@ -140,10 +168,9 @@ func (svc *Services) LoginUser(email, password string) (*models.BankingUser, err
 	svc.Store.RLock()
 	defer svc.Store.RUnlock()
 	for _, u := range svc.Store.Users {
-		if u.Email == email {
-			err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(password))
-			if err != nil {
-				return nil, fmt.Errorf("invalid credentials")
+		if strings.EqualFold(u.Email, email) {
+			if err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(password)); err != nil {
+				return nil, apperrors.NewUnauthorized("invalid credentials")
 			}
 			uid, _ := uuid.Parse(u.ID)
 			return &models.BankingUser{
@@ -156,25 +183,34 @@ func (svc *Services) LoginUser(email, password string) (*models.BankingUser, err
 			}, nil
 		}
 	}
-	return nil, fmt.Errorf("user not found")
+	return nil, apperrors.NewUnauthorized("user not found")
 }
 
 // LoginOrRegisterOAuth supports seamless single-click Google/Gmail and Passkey authentication
 func (svc *Services) LoginOrRegisterOAuth(name, email, provider, providerID string, role models.UserRole) (*models.BankingUser, error) {
+	email = strings.TrimSpace(strings.ToLower(email))
+	if email == "" || !strings.Contains(email, "@") {
+		return nil, apperrors.NewValidation("email", "valid OAuth email is required")
+	}
+	if name == "" {
+		name = "Verified OENGO User"
+	}
+
 	if svc.Store.DB != nil {
 		var user models.BankingUser
 		err := svc.Store.DB.Where("email = ?", email).First(&user).Error
 
 		if err == nil {
-			// User exists, update auth provider if needed
 			if user.AuthProvider == "" || user.AuthProvider == "LOCAL" {
 				user.AuthProvider = provider
 				user.ProviderID = providerID
-				svc.Store.DB.Save(&user)
+				if saveErr := svc.Store.DB.Save(&user).Error; saveErr != nil {
+					return nil, apperrors.WrapDBError("oauth_update_provider", saveErr)
+				}
 			}
 			return &user, nil
 		} else if err != gorm.ErrRecordNotFound {
-			return nil, err
+			return nil, apperrors.WrapDBError("oauth_user_lookup", err)
 		}
 
 		// New user registration via OAuth
@@ -199,18 +235,17 @@ func (svc *Services) LoginOrRegisterOAuth(name, email, provider, providerID stri
 		}
 
 		if err := svc.Store.DB.Create(newUser).Error; err != nil {
-			return nil, err
+			return nil, apperrors.WrapDBError("oauth_create_user", err)
 		}
 
-		// Synchronize with legacy in-memory user map
 		svc.Store.Lock()
-		svc.Store.Users[newUser.ID.String()] = &models.User{
+		_ = svc.Store.SaveUser(&models.User{
 			ID:        newUser.ID.String(),
 			Name:      newUser.Name,
 			Email:     newUser.Email,
 			Role:      newUser.Role,
 			KYCStatus: newUser.KYCStatus,
-		}
+		})
 		svc.Store.Unlock()
 
 		return newUser, nil
@@ -228,13 +263,13 @@ func (svc *Services) LoginOrRegisterOAuth(name, email, provider, providerID stri
 		ProviderID:   providerID,
 	}
 	svc.Store.Lock()
-	svc.Store.Users[uid.String()] = &models.User{
+	_ = svc.Store.SaveUser(&models.User{
 		ID:        uid.String(),
 		Name:      name,
 		Email:     email,
 		Role:      role,
 		KYCStatus: "VERIFIED",
-	}
+	})
 	svc.Store.Unlock()
 	return newUser, nil
 }
@@ -245,14 +280,20 @@ func (svc *Services) ApproveKYC(userID string) (*models.User, error) {
 
 	u, exists := svc.Store.Users[userID]
 	if !exists {
-		return nil, fmt.Errorf("user not found")
+		return nil, apperrors.NewNotFound("user", userID)
 	}
 
 	u.KYCStatus = "VERIFIED"
+	if err := svc.Store.SaveUser(u); err != nil {
+		return nil, err
+	}
 
 	if u.Role == models.RoleCourier {
 		if rp, ok := svc.Store.Riders[userID]; ok {
 			rp.KYCStatus = "VERIFIED"
+			if err := svc.Store.SaveRider(rp); err != nil {
+				return nil, err
+			}
 		}
 	}
 	return u, nil
@@ -260,38 +301,47 @@ func (svc *Services) ApproveKYC(userID string) (*models.User, error) {
 
 // SubmitCustomerKYC advances a customer's KYC Tier under EU AMLD5 / MiCA guidelines
 func (svc *Services) SubmitCustomerKYC(userID string, tier int, docType, docNumber string) (*models.BankingUser, error) {
-	var user models.BankingUser
-	if err := svc.Store.DB.Where("id = ? OR email = ?", userID, userID).First(&user).Error; err != nil {
-		// Fallback for demo / memory users
-		if legacyUser, ok := svc.Store.Users[userID]; ok {
-			legacyUser.KYCStatus = "VERIFIED"
-			return &models.BankingUser{
-				Name:      legacyUser.Name,
-				Email:     legacyUser.Email,
-				Role:      legacyUser.Role,
-				KYCStatus: "VERIFIED",
-				KYCTier:   tier,
-			}, nil
+	if tier < 1 || tier > 3 {
+		return nil, apperrors.NewValidation("tier", "KYC tier must be between 1 and 3")
+	}
+
+	if svc.Store.DB != nil {
+		var user models.BankingUser
+		if err := svc.Store.DB.Where("id = ? OR email = ?", userID, userID).First(&user).Error; err == nil {
+			user.KYCTier = tier
+			user.KYCDocType = docType
+			user.KYCDocNumber = docNumber
+			user.KYCStatus = "VERIFIED"
+
+			if err := svc.Store.DB.Save(&user).Error; err != nil {
+				return nil, apperrors.WrapDBError("submit_customer_kyc", err)
+			}
+
+			svc.Store.Lock()
+			if memUser, ok := svc.Store.Users[user.ID.String()]; ok {
+				memUser.KYCStatus = "VERIFIED"
+				_ = svc.Store.SaveUser(memUser)
+			}
+			svc.Store.Unlock()
+
+			return &user, nil
 		}
-		return nil, fmt.Errorf("user not found: %s", userID)
 	}
 
-	user.KYCTier = tier
-	user.KYCDocType = docType
-	user.KYCDocNumber = docNumber
-	user.KYCStatus = "VERIFIED"
-
-	if err := svc.Store.DB.Save(&user).Error; err != nil {
-		return nil, err
-	}
-
-	// Synchronize in-memory legacy mirror
+	// Fallback for demo / memory users
 	svc.Store.Lock()
-	if memUser, ok := svc.Store.Users[user.ID.String()]; ok {
-		memUser.KYCStatus = "VERIFIED"
+	defer svc.Store.Unlock()
+	if legacyUser, ok := svc.Store.Users[userID]; ok {
+		legacyUser.KYCStatus = "VERIFIED"
+		_ = svc.Store.SaveUser(legacyUser)
+		return &models.BankingUser{
+			Name:      legacyUser.Name,
+			Email:     legacyUser.Email,
+			Role:      legacyUser.Role,
+			KYCStatus: "VERIFIED",
+			KYCTier:   tier,
+		}, nil
 	}
-	svc.Store.Unlock()
-
-	return &user, nil
+	return nil, apperrors.NewNotFound("user", userID)
 }
 

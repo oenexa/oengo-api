@@ -4,10 +4,12 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"log"
 	"math"
 	"strings"
 	"time"
 
+	"oengo-api/internal/apperrors"
 	"oengo-api/internal/config"
 	"oengo-api/internal/models"
 	"oengo-api/internal/store"
@@ -58,7 +60,7 @@ func (svc *Services) GetRestaurantProfile(id string) (*models.Restaurant, error)
 
 	r, exists := svc.Store.Restaurants[id]
 	if !exists {
-		return nil, fmt.Errorf("restaurant not found")
+		return nil, apperrors.NewNotFound("restaurant", id)
 	}
 
 	// Compute live revenue stats
@@ -109,7 +111,7 @@ func (svc *Services) UpdateRestaurant(id string, isOpen *bool, prepEta *int, nam
 
 	r, exists := svc.Store.Restaurants[id]
 	if !exists {
-		return nil, fmt.Errorf("restaurant not found")
+		return nil, apperrors.NewNotFound("restaurant", id)
 	}
 
 	if isOpen != nil {
@@ -123,6 +125,10 @@ func (svc *Services) UpdateRestaurant(id string, isOpen *bool, prepEta *int, nam
 	}
 	if tagline != nil && *tagline != "" {
 		r.Tagline = *tagline
+	}
+
+	if err := svc.Store.SaveRestaurant(r); err != nil {
+		return nil, err
 	}
 
 	return r, nil
@@ -140,10 +146,11 @@ func (svc *Services) AddDish(restaurantID string, item models.MenuItem) (*models
 	defer svc.Store.Unlock()
 
 	if item.Name == "" || item.PriceEUR <= 0 {
-		return nil, fmt.Errorf("dish name and positive price are required")
+		return nil, apperrors.NewValidation("priceEUR", "dish name and positive price are required")
 	}
 
 	item.ID = fmt.Sprintf("menu_%d", time.Now().UnixMilli())
+	item.RestaurantID = restaurantID
 	item.PriceOEN = fmt.Sprintf("%.2f", item.PriceEUR/svc.Cfg.OenEurExchangeRate)
 	item.InStock = true
 	if item.StockQuantity == 0 {
@@ -154,6 +161,10 @@ func (svc *Services) AddDish(restaurantID string, item models.MenuItem) (*models
 	}
 	if item.PrepMinutes == 0 {
 		item.PrepMinutes = 15
+	}
+
+	if err := svc.Store.SaveMenuItem(restaurantID, &item); err != nil {
+		return nil, err
 	}
 
 	svc.Store.Menus[restaurantID] = append(svc.Store.Menus[restaurantID], item)
@@ -180,10 +191,13 @@ func (svc *Services) UpdateDish(restaurantID, itemID string, inStock *bool, pric
 					menu[i].InStock = false
 				}
 			}
+			if err := svc.Store.SaveMenuItem(restaurantID, &menu[i]); err != nil {
+				return nil, err
+			}
 			return &menu[i], nil
 		}
 	}
-	return nil, fmt.Errorf("menu item not found")
+	return nil, apperrors.NewNotFound("menu item", itemID)
 }
 
 func (svc *Services) DeleteDish(restaurantID, itemID string) error {
@@ -193,11 +207,14 @@ func (svc *Services) DeleteDish(restaurantID, itemID string) error {
 	menu := svc.Store.Menus[restaurantID]
 	for i, item := range menu {
 		if item.ID == itemID {
+			if err := svc.Store.DeleteMenuItem(restaurantID, itemID); err != nil {
+				return err
+			}
 			svc.Store.Menus[restaurantID] = append(menu[:i], menu[i+1:]...)
 			return nil
 		}
 	}
-	return fmt.Errorf("menu item not found")
+	return apperrors.NewNotFound("menu item", itemID)
 }
 
 // ── ORDER SERVICE ───────────────────────────────────────────────────────────
@@ -227,11 +244,11 @@ func (svc *Services) CreateOrder(req CreateOrderRequest) (*models.Order, error) 
 
 	buyer, exists := svc.Store.Users[req.BuyerID]
 	if !exists {
-		return nil, fmt.Errorf("invalid buyer ID")
+		return nil, apperrors.NewBadRequest("invalid buyer ID: " + req.BuyerID)
 	}
 	rest, exists := svc.Store.Restaurants[req.RestaurantID]
 	if !exists {
-		return nil, fmt.Errorf("invalid restaurant ID")
+		return nil, apperrors.NewBadRequest("invalid restaurant ID: " + req.RestaurantID)
 	}
 
 	commPct := svc.Store.CommissionPct
@@ -271,10 +288,17 @@ func (svc *Services) CreateOrder(req CreateOrderRequest) (*models.Order, error) 
 		EscrowLocked:      true,
 	}
 
+	if err := svc.Store.SaveOrder(order); err != nil {
+		return nil, err
+	}
 	svc.Store.Orders[orderID] = order
 
 	// Double-entry: Debit 1001 (Cash Clearing) / Credit 1003 (Locked Escrow)
-	go svc.Store.RecordLedgerTx(orderID, "1001", "1003", total, fmt.Sprintf("Order %s escrow lock", orderID))
+	go func() {
+		if err := svc.Store.RecordLedgerTx(orderID, "1001", "1003", total, fmt.Sprintf("Order %s escrow lock", orderID)); err != nil {
+			log.Printf("[LEDGER_ERROR] failed to record escrow lock for order %s: %v", orderID, err)
+		}
+	}()
 
 	return order, nil
 }
@@ -285,7 +309,7 @@ func (svc *Services) GetOrder(id string) (*models.Order, error) {
 
 	o, exists := svc.Store.Orders[id]
 	if !exists {
-		return nil, fmt.Errorf("order not found")
+		return nil, apperrors.NewNotFound("order", id)
 	}
 	return o, nil
 }
@@ -316,10 +340,13 @@ func (svc *Services) UpdateOrderStatus(id string, status models.OrderStatus) (*m
 
 	o, exists := svc.Store.Orders[id]
 	if !exists {
-		return nil, fmt.Errorf("order not found")
+		return nil, apperrors.NewNotFound("order", id)
 	}
 
 	o.Status = status
+	if err := svc.Store.SaveOrder(o); err != nil {
+		return nil, err
+	}
 
 	// Notify Customer via Email/SMS
 	if svc.Notifier != nil {
@@ -338,16 +365,19 @@ func (svc *Services) AssignCourier(orderID, courierID string) (*models.Order, er
 
 	o, exists := svc.Store.Orders[orderID]
 	if !exists {
-		return nil, fmt.Errorf("order not found")
+		return nil, apperrors.NewNotFound("order", orderID)
 	}
 
 	courier, exists := svc.Store.Users[courierID]
 	if !exists {
-		return nil, fmt.Errorf("courier not found")
+		return nil, apperrors.NewNotFound("courier", courierID)
 	}
 
 	o.CourierID = courierID
 	o.CourierAddress = courier.CryptoWalletAddress
+	if err := svc.Store.SaveOrder(o); err != nil {
+		return nil, err
+	}
 	return o, nil
 }
 
@@ -357,14 +387,17 @@ func (svc *Services) ConfirmPickup(orderID, barcode string) (*models.Order, erro
 
 	o, exists := svc.Store.Orders[orderID]
 	if !exists {
-		return nil, fmt.Errorf("order not found")
+		return nil, apperrors.NewNotFound("order", orderID)
 	}
 
 	if o.PickupBarcode != barcode && o.PickupBarcodeHash != store.Sha256Hash(barcode) {
-		return nil, fmt.Errorf("invalid pickup barcode")
+		return nil, apperrors.NewInvalidSecurityCode("invalid pickup barcode")
 	}
 
 	o.Status = models.StatusInTransit
+	if err := svc.Store.SaveOrder(o); err != nil {
+		return nil, err
+	}
 	return o, nil
 }
 
@@ -374,14 +407,14 @@ func (svc *Services) ConfirmDelivery(orderID, pinOrBarcode string) (*models.Orde
 
 	o, exists := svc.Store.Orders[orderID]
 	if !exists {
-		return nil, fmt.Errorf("order not found")
+		return nil, apperrors.NewNotFound("order", orderID)
 	}
 
 	// Validate PIN or Barcode
 	pinMatch := o.DeliveryPIN == pinOrBarcode || o.DeliveryPINHash == store.Sha256Hash(pinOrBarcode)
 	barcodeMatch := o.PickupBarcode == pinOrBarcode || o.PickupBarcodeHash == store.Sha256Hash(pinOrBarcode)
 	if !pinMatch && !barcodeMatch {
-		return nil, fmt.Errorf("invalid delivery PIN or barcode")
+		return nil, apperrors.NewInvalidSecurityCode("invalid delivery PIN or barcode")
 	}
 
 	// Settlement calculations:
@@ -398,35 +431,49 @@ func (svc *Services) ConfirmDelivery(orderID, pinOrBarcode string) (*models.Orde
 	o.RestaurantPayout = restPayout
 	o.CourierPayout = courierPayout
 
+	if err := svc.Store.SaveOrder(o); err != nil {
+		return nil, err
+	}
+
 	// Update restaurant and rider fiat balances
 	if rest, ok := svc.Store.Restaurants[o.RestaurantID]; ok {
 		rest.FiatBalanceEUR += restPayout
+		_ = svc.Store.SaveRestaurant(rest)
 	}
 	if rider, ok := svc.Store.Riders[o.CourierID]; ok {
 		rider.TodayEarningsEUR += courierPayout
 		rider.TotalDeliveries++
+		_ = svc.Store.SaveRider(rider)
 	}
 
 	// Double-entry multi-split ledger:
 	// Debit 1003 (Locked Escrow): Total
 	// Credit 2001 (Restaurant Payable): restPayout
 	// Credit 2002 (Courier Payable): courierPayout
-	go svc.Store.RecordLedgerTx(orderID, "1003", "2001", restPayout, fmt.Sprintf("Order %s delivery restaurant payout", orderID))
-	go svc.Store.RecordLedgerTx(orderID, "1003", "2002", courierPayout, fmt.Sprintf("Order %s delivery courier payout", orderID))
+	go func() {
+		if err := svc.Store.RecordLedgerTx(orderID, "1003", "2001", restPayout, fmt.Sprintf("Order %s delivery restaurant payout", orderID)); err != nil {
+			log.Printf("[LEDGER_ERROR] failed to record restaurant payout for order %s: %v", orderID, err)
+		}
+		if err := svc.Store.RecordLedgerTx(orderID, "1003", "2002", courierPayout, fmt.Sprintf("Order %s delivery courier payout", orderID)); err != nil {
+			log.Printf("[LEDGER_ERROR] failed to record courier payout for order %s: %v", orderID, err)
+		}
+	}()
 
 	// Mint 5% loyalty coins for customer
 	cashbackCoins := int64(math.Round(o.Amount * 0.05 * 100))
 	if profile, ok := svc.Store.Coins[o.BuyerID]; ok {
 		profile.CoinBalance += cashbackCoins
 		profile.TotalEarned += cashbackCoins
-		profile.Transactions = append(profile.Transactions, models.CoinTx{
+		tx := models.CoinTx{
 			ID:        fmt.Sprintf("ctx_%d", time.Now().UnixNano()),
 			Type:      "EARNED",
 			Coins:     cashbackCoins,
 			Reason:    "ORDER_CASHBACK_5PCT",
 			OrderID:   orderID,
 			CreatedAt: time.Now(),
-		})
+		}
+		profile.Transactions = append(profile.Transactions, tx)
+		_ = svc.Store.SaveCoin(profile)
 	}
 
 	return o, nil
@@ -438,19 +485,27 @@ func (svc *Services) DeclineOrder(orderID, reason string) (*models.Order, error)
 
 	o, exists := svc.Store.Orders[orderID]
 	if !exists {
-		return nil, fmt.Errorf("order not found")
+		return nil, apperrors.NewNotFound("order", orderID)
 	}
 
 	o.Status = models.StatusRefunded
 	o.EscrowLocked = false
+	if err := svc.Store.SaveOrder(o); err != nil {
+		return nil, err
+	}
 
 	// Refund buyer wallet if applicable
 	if buyer, ok := svc.Store.Users[o.BuyerID]; ok {
 		buyer.DigitalWallet.FiatBalanceEUR += o.Total
+		_ = svc.Store.SaveUser(buyer)
 	}
 
 	// Double-entry: Debit 1003 (Locked Escrow) / Credit 1002 (Customer Available Wallet)
-	go svc.Store.RecordLedgerTx(orderID, "1003", "1002", o.Total, fmt.Sprintf("Order %s refund: %s", orderID, reason))
+	go func() {
+		if err := svc.Store.RecordLedgerTx(orderID, "1003", "1002", o.Total, fmt.Sprintf("Order %s refund: %s", orderID, reason)); err != nil {
+			log.Printf("[LEDGER_ERROR] failed to record refund for order %s: %v", orderID, err)
+		}
+	}()
 
 	return o, nil
 }
@@ -463,7 +518,7 @@ func (svc *Services) GetWallet(userID string) (*models.User, error) {
 
 	u, exists := svc.Store.Users[userID]
 	if !exists {
-		return nil, fmt.Errorf("user not found")
+		return nil, apperrors.NewNotFound("user", userID)
 	}
 	return u, nil
 }
@@ -474,22 +529,29 @@ func (svc *Services) DepositWallet(userID string, amount float64) (float64, erro
 
 	u, exists := svc.Store.Users[userID]
 	if !exists {
-		return 0, fmt.Errorf("user not found")
+		return 0, apperrors.NewNotFound("user", userID)
 	}
 	if amount <= 0 {
-		return 0, fmt.Errorf("amount must be greater than zero")
+		return 0, apperrors.NewValidation("amount", "amount must be greater than zero")
 	}
 
 	// EU AMLD5 Regulatory Enforcement:
 	// Unverified users (Tier 0) cannot hold a cumulative wallet balance exceeding €150.00 without KYC verification.
 	if u.DigitalWallet.FiatBalanceEUR+amount > 150.0 && u.KYCStatus != "VERIFIED" {
-		return 0, fmt.Errorf("EU AMLD5 Compliance: Stored wallet balance exceeds €150 limit. Customer KYC verification required")
+		return 0, apperrors.NewKYCRequired(1, "EU AMLD5 Compliance: Stored wallet balance exceeds €150 limit. Customer KYC verification required")
 	}
 
 	u.DigitalWallet.FiatBalanceEUR += amount
+	if err := svc.Store.SaveUser(u); err != nil {
+		return 0, err
+	}
 
 	txID := fmt.Sprintf("dep_%d", time.Now().UnixMilli())
-	go svc.Store.RecordLedgerTx(txID, "1001", "1002", amount, fmt.Sprintf("User %s wallet deposit", userID))
+	go func() {
+		if err := svc.Store.RecordLedgerTx(txID, "1001", "1002", amount, fmt.Sprintf("User %s wallet deposit", userID)); err != nil {
+			log.Printf("[LEDGER_ERROR] failed to record deposit for user %s: %v", userID, err)
+		}
+	}()
 
 	return u.DigitalWallet.FiatBalanceEUR, nil
 }
@@ -500,19 +562,26 @@ func (svc *Services) WithdrawWallet(userID string, amount float64, iban string) 
 
 	u, exists := svc.Store.Users[userID]
 	if !exists {
-		return 0, fmt.Errorf("user not found")
+		return 0, apperrors.NewNotFound("user", userID)
 	}
 	if amount <= 0 {
-		return 0, fmt.Errorf("amount must be greater than zero")
+		return 0, apperrors.NewValidation("amount", "amount must be greater than zero")
 	}
 	if u.DigitalWallet.FiatBalanceEUR < amount {
-		return 0, fmt.Errorf("insufficient wallet balance")
+		return 0, apperrors.NewInsufficientFunds(u.DigitalWallet.FiatBalanceEUR, amount, "EUR")
 	}
 
 	u.DigitalWallet.FiatBalanceEUR -= amount
+	if err := svc.Store.SaveUser(u); err != nil {
+		return 0, err
+	}
 
 	txID := fmt.Sprintf("wth_%d", time.Now().UnixMilli())
-	go svc.Store.RecordLedgerTx(txID, "1002", "1001", amount, fmt.Sprintf("User %s withdrawal to %s", userID, iban))
+	go func() {
+		if err := svc.Store.RecordLedgerTx(txID, "1002", "1001", amount, fmt.Sprintf("User %s withdrawal to %s", userID, iban)); err != nil {
+			log.Printf("[LEDGER_ERROR] failed to record withdrawal for user %s: %v", userID, err)
+		}
+	}()
 
 	return u.DigitalWallet.FiatBalanceEUR, nil
 }
@@ -552,6 +621,7 @@ func (svc *Services) GetCoinProfile(userID string) *models.CoinProfile {
 			},
 		}
 		svc.Store.Coins[userID] = profile
+		_ = svc.Store.SaveCoin(profile)
 	}
 	return profile
 }
@@ -562,25 +632,33 @@ func (svc *Services) RedeemCoins(userID string, coins int64, subtotal float64) (
 
 	profile, exists := svc.Store.Coins[userID]
 	if !exists || profile.CoinBalance < coins {
-		return 0, fmt.Errorf("insufficient OENGO coins")
+		var avail float64
+		if exists {
+			avail = float64(profile.CoinBalance)
+		}
+		return 0, apperrors.NewInsufficientFunds(avail, float64(coins), "OENGO_COINS")
 	}
 
 	// 100 coins = €1.00
 	discountEUR := float64(coins) / 100.0
 	maxDiscount := subtotal * 0.20 // Max 20% order subtotal
 	if subtotal > 0 && discountEUR > maxDiscount {
-		return 0, fmt.Errorf("exceeds max coin discount of 20%% (€%.2f)", maxDiscount)
+		return 0, apperrors.NewValidation("coins", fmt.Sprintf("exceeds max coin discount of 20%% (€%.2f)", maxDiscount))
 	}
 
 	profile.CoinBalance -= coins
 	profile.TotalSpent += coins
-	profile.Transactions = append(profile.Transactions, models.CoinTx{
+	tx := models.CoinTx{
 		ID:        fmt.Sprintf("ctx_%d", time.Now().UnixNano()),
 		Type:      "REDEEMED",
 		Coins:     coins,
 		Reason:    "ORDER_DISCOUNT",
 		CreatedAt: time.Now(),
-	})
+	}
+	profile.Transactions = append(profile.Transactions, tx)
+	if err := svc.Store.SaveCoin(profile); err != nil {
+		return 0, err
+	}
 
 	return discountEUR, nil
 }
@@ -604,7 +682,7 @@ func (svc *Services) CreateCardIntent(amount float64, currency string) (map[stri
 func (svc *Services) ConfirmCardPayment(intentID, cardNumber, cardHolder string, saveCard bool, userID string) (*models.CardPaymentInfo, error) {
 	cleanNum := strings.ReplaceAll(cardNumber, " ", "")
 	if len(cleanNum) < 13 {
-		return nil, fmt.Errorf("invalid card number length")
+		return nil, apperrors.NewValidation("cardNumber", "invalid card number length (minimum 13 digits)")
 	}
 
 	brand := "Visa"
@@ -638,17 +716,24 @@ func (svc *Services) InstantPay(userID, method string, amount float64) (map[stri
 
 	user, exists := svc.Store.Users[userID]
 	if !exists {
-		return nil, fmt.Errorf("user not found")
+		return nil, apperrors.NewNotFound("user", userID)
 	}
 
 	if method == "WALLET" && user.DigitalWallet.FiatBalanceEUR < amount {
-		return nil, fmt.Errorf("insufficient wallet balance")
+		return nil, apperrors.NewInsufficientFunds(user.DigitalWallet.FiatBalanceEUR, amount, "EUR")
 	}
 
 	txID := fmt.Sprintf("inst_%d", time.Now().UnixMilli())
 	if method == "WALLET" {
 		user.DigitalWallet.FiatBalanceEUR -= amount
-		go svc.Store.RecordLedgerTx(txID, "1002", "1001", amount, "Instant 1-Click Pay debit")
+		if err := svc.Store.SaveUser(user); err != nil {
+			return nil, err
+		}
+		go func() {
+			if err := svc.Store.RecordLedgerTx(txID, "1002", "1001", amount, "Instant 1-Click Pay debit"); err != nil {
+				log.Printf("[LEDGER_ERROR] failed to record instant pay for user %s: %v", userID, err)
+			}
+		}()
 	}
 
 	return map[string]interface{}{
@@ -669,7 +754,7 @@ func (svc *Services) GetRiderProfile(riderID string) (*models.RiderProfile, erro
 
 	r, exists := svc.Store.Riders[riderID]
 	if !exists {
-		return nil, fmt.Errorf("rider not found")
+		return nil, apperrors.NewNotFound("rider", riderID)
 	}
 	return r, nil
 }
@@ -680,9 +765,12 @@ func (svc *Services) ToggleRiderStatus(riderID string, isOnline bool) (*models.R
 
 	r, exists := svc.Store.Riders[riderID]
 	if !exists {
-		return nil, fmt.Errorf("rider not found")
+		return nil, apperrors.NewNotFound("rider", riderID)
 	}
 	r.IsOnline = isOnline
+	if err := svc.Store.SaveRider(r); err != nil {
+		return nil, err
+	}
 	return r, nil
 }
 
@@ -692,13 +780,16 @@ func (svc *Services) UpdateRiderLocation(riderID string, lat, lng, heading float
 
 	r, exists := svc.Store.Riders[riderID]
 	if !exists {
-		return nil, fmt.Errorf("rider not found")
+		return nil, apperrors.NewNotFound("rider", riderID)
 	}
 	r.CurrentLocation = models.Location{
 		Lat:       lat,
 		Lng:       lng,
 		Heading:   heading,
 		UpdatedAt: time.Now().Format(time.RFC3339),
+	}
+	if err := svc.Store.SaveRider(r); err != nil {
+		return nil, err
 	}
 	return &r.CurrentLocation, nil
 }
@@ -724,7 +815,7 @@ func (svc *Services) GetCustomerProfile(userID string) (*models.CustomerProfile,
 
 	p, exists := svc.Store.CustomerProfiles[userID]
 	if !exists {
-		return nil, fmt.Errorf("customer profile not found")
+		return nil, apperrors.NewNotFound("customer profile", userID)
 	}
 	return p, nil
 }
@@ -735,11 +826,16 @@ func (svc *Services) AddSavedAddress(userID string, addr models.SavedAddress) (*
 
 	p, exists := svc.Store.CustomerProfiles[userID]
 	if !exists {
-		return nil, fmt.Errorf("customer profile not found")
+		return nil, apperrors.NewNotFound("customer profile", userID)
 	}
 
 	addr.ID = fmt.Sprintf("addr_%d", time.Now().UnixMilli())
 	p.SavedAddresses = append(p.SavedAddresses, addr)
+	if svc.Store.DB != nil {
+		if err := svc.Store.DB.Save(p).Error; err != nil {
+			return nil, apperrors.WrapDBError("AddSavedAddress", err)
+		}
+	}
 	return p, nil
 }
 
@@ -796,7 +892,10 @@ func (svc *Services) SetCommissionRate(pct float64) (float64, error) {
 	defer svc.Store.Unlock()
 
 	if pct < svc.Cfg.MinCommissionPct || pct > svc.Cfg.MaxCommissionPct {
-		return 0, fmt.Errorf("commission percentage must be between %.1f and %.1f", svc.Cfg.MinCommissionPct, svc.Cfg.MaxCommissionPct)
+		return 0, apperrors.NewValidation(
+			"ratePct",
+			fmt.Sprintf("commission percentage must be between %.1f and %.1f", svc.Cfg.MinCommissionPct, svc.Cfg.MaxCommissionPct),
+		)
 	}
 	svc.Store.CommissionPct = pct
 	return svc.Store.CommissionPct, nil
@@ -836,11 +935,14 @@ func (svc *Services) ValidateCoupon(code string, subtotal float64) (float64, err
 
 	c, exists := svc.Store.Coupons[code]
 	if !exists || !c.IsActive {
-		return 0, fmt.Errorf("invalid or expired coupon code")
+		return 0, apperrors.NewBadRequest("invalid or expired coupon code")
 	}
 
 	if subtotal < c.MinOrderEUR {
-		return 0, fmt.Errorf("minimum order of €%.2f required for coupon %s", c.MinOrderEUR, code)
+		return 0, apperrors.NewValidation(
+			"subtotal",
+			fmt.Sprintf("minimum order of €%.2f required for coupon %s", c.MinOrderEUR, code),
+		)
 	}
 
 	var discount float64

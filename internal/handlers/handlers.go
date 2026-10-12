@@ -9,6 +9,7 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 
+	"oengo-api/internal/apperrors"
 	"oengo-api/internal/models"
 	"oengo-api/internal/services"
 )
@@ -25,8 +26,13 @@ func SetupRouter(svc *services.Services) *gin.Engine {
 	config := cors.DefaultConfig()
 	config.AllowAllOrigins = true
 	config.AllowMethods = []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"}
-	config.AllowHeaders = []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Requested-With"}
+	config.AllowHeaders = []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Requested-With", "X-Request-ID"}
+	config.ExposeHeaders = []string{"X-Request-ID"}
 	r.Use(cors.New(config))
+
+	// Enterprise Correlation ID & Panic/Error Recovery Middleware
+	r.Use(apperrors.RequestIDMiddleware())
+	r.Use(apperrors.ErrorHandlingMiddleware())
 
 	// Health check (supports GET and HEAD)
 	r.Match([]string{"GET", "HEAD"}, "/health", func(c *gin.Context) {
@@ -34,6 +40,7 @@ func SetupRouter(svc *services.Services) *gin.Engine {
 			"status":    "UP",
 			"service":   "oengo-api",
 			"runtime":   "golang-gin",
+			"requestId": apperrors.GetRequestID(c),
 			"timestamp": time.Now().UTC().Format(time.RFC3339),
 		})
 	})
@@ -44,12 +51,12 @@ func SetupRouter(svc *services.Services) *gin.Engine {
 		api.POST("/auth/register", func(c *gin.Context) {
 			var req services.RegisterRequest
 			if err := c.ShouldBindJSON(&req); err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				apperrors.RespondWithError(c, apperrors.NewBadRequest("Invalid registration payload: "+err.Error()))
 				return
 			}
 			user, err := svc.RegisterUser(req)
 			if err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				apperrors.RespondWithError(c, err)
 				return
 			}
 			c.JSON(http.StatusCreated, gin.H{"success": true, "user": user})
@@ -61,12 +68,12 @@ func SetupRouter(svc *services.Services) *gin.Engine {
 				Password string `json:"password"`
 			}
 			if err := c.ShouldBindJSON(&req); err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				apperrors.RespondWithError(c, apperrors.NewBadRequest("Invalid login payload: "+err.Error()))
 				return
 			}
 			user, err := svc.LoginUser(req.Email, req.Password)
 			if err != nil {
-				c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+				apperrors.RespondWithError(c, err)
 				return
 			}
 			c.JSON(http.StatusOK, gin.H{"success": true, "user": user})
@@ -82,7 +89,7 @@ func SetupRouter(svc *services.Services) *gin.Engine {
 				Role       models.UserRole `json:"role"`       // Default to CUSTOMER if empty
 			}
 			if err := c.ShouldBindJSON(&req); err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				apperrors.RespondWithError(c, apperrors.NewBadRequest("Invalid OAuth payload: "+err.Error()))
 				return
 			}
 			if req.Role == "" {
@@ -94,7 +101,7 @@ func SetupRouter(svc *services.Services) *gin.Engine {
 
 			user, err := svc.LoginOrRegisterOAuth(req.Name, req.Email, req.Provider, req.ProviderID, req.Role)
 			if err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				apperrors.RespondWithError(c, err)
 				return
 			}
 			c.JSON(http.StatusOK, gin.H{
@@ -108,7 +115,7 @@ func SetupRouter(svc *services.Services) *gin.Engine {
 			userID := c.Param("userId")
 			user, err := svc.ApproveKYC(userID)
 			if err != nil {
-				c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+				apperrors.RespondWithError(c, err)
 				return
 			}
 			c.JSON(http.StatusOK, gin.H{"success": true, "user": user})
@@ -117,13 +124,13 @@ func SetupRouter(svc *services.Services) *gin.Engine {
 		// Customer Tiered KYC Submission (EU AMLD5 / MiCA Crypto Unlock)
 		api.POST("/kyc/customer/verify", func(c *gin.Context) {
 			var body struct {
-				UserID     string `json:"userId"`
-				Tier       int    `json:"tier"` // 1: EUR <150, 2: Full Crypto OEN & High Balance
-				DocType    string `json:"docType"`
-				DocNumber  string `json:"docNumber"`
+				UserID    string `json:"userId"`
+				Tier      int    `json:"tier"` // 1: EUR <150, 2: Full Crypto OEN & High Balance
+				DocType   string `json:"docType"`
+				DocNumber string `json:"docNumber"`
 			}
 			if err := c.ShouldBindJSON(&body); err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				apperrors.RespondWithError(c, apperrors.NewBadRequest("Invalid KYC verification payload: "+err.Error()))
 				return
 			}
 			if body.UserID == "" {
@@ -135,7 +142,7 @@ func SetupRouter(svc *services.Services) *gin.Engine {
 
 			user, err := svc.SubmitCustomerKYC(body.UserID, body.Tier, body.DocType, body.DocNumber)
 			if err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				apperrors.RespondWithError(c, err)
 				return
 			}
 			c.JSON(http.StatusOK, gin.H{
@@ -161,7 +168,7 @@ func SetupRouter(svc *services.Services) *gin.Engine {
 			id := c.Param("id")
 			r, err := svc.GetRestaurantProfile(id)
 			if err != nil {
-				c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+				apperrors.RespondWithError(c, err)
 				return
 			}
 			c.JSON(http.StatusOK, gin.H{"success": true, "restaurant": r})
@@ -176,12 +183,12 @@ func SetupRouter(svc *services.Services) *gin.Engine {
 				Tagline        *string `json:"tagline"`
 			}
 			if err := c.ShouldBindJSON(&body); err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				apperrors.RespondWithError(c, apperrors.NewBadRequest("Invalid restaurant update payload: "+err.Error()))
 				return
 			}
 			updated, err := svc.UpdateRestaurant(id, body.IsOpen, body.PrepEtaMinutes, body.Name, body.Tagline)
 			if err != nil {
-				c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+				apperrors.RespondWithError(c, err)
 				return
 			}
 			c.JSON(http.StatusOK, gin.H{"success": true, "restaurant": updated})
@@ -202,12 +209,12 @@ func SetupRouter(svc *services.Services) *gin.Engine {
 			id := c.Param("id")
 			var item models.MenuItem
 			if err := c.ShouldBindJSON(&item); err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				apperrors.RespondWithError(c, apperrors.NewBadRequest("Invalid menu item payload: "+err.Error()))
 				return
 			}
 			created, err := svc.AddDish(id, item)
 			if err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				apperrors.RespondWithError(c, err)
 				return
 			}
 			c.JSON(http.StatusCreated, gin.H{"success": true, "item": created})
@@ -222,12 +229,12 @@ func SetupRouter(svc *services.Services) *gin.Engine {
 				StockQuantity *int     `json:"stockQuantity"`
 			}
 			if err := c.ShouldBindJSON(&body); err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				apperrors.RespondWithError(c, apperrors.NewBadRequest("Invalid menu update payload: "+err.Error()))
 				return
 			}
 			updated, err := svc.UpdateDish(restID, itemID, body.InStock, body.PriceEUR, body.StockQuantity)
 			if err != nil {
-				c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+				apperrors.RespondWithError(c, err)
 				return
 			}
 			c.JSON(http.StatusOK, gin.H{"success": true, "item": updated})
@@ -237,7 +244,7 @@ func SetupRouter(svc *services.Services) *gin.Engine {
 			restID := c.Param("id")
 			itemID := c.Param("itemId")
 			if err := svc.DeleteDish(restID, itemID); err != nil {
-				c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+				apperrors.RespondWithError(c, err)
 				return
 			}
 			c.JSON(http.StatusOK, gin.H{"success": true, "message": "Dish deleted"})
@@ -255,12 +262,12 @@ func SetupRouter(svc *services.Services) *gin.Engine {
 		api.POST("/orders", func(c *gin.Context) {
 			var req services.CreateOrderRequest
 			if err := c.ShouldBindJSON(&req); err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				apperrors.RespondWithError(c, apperrors.NewBadRequest("Invalid order payload: "+err.Error()))
 				return
 			}
 			order, err := svc.CreateOrder(req)
 			if err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				apperrors.RespondWithError(c, err)
 				return
 			}
 			c.JSON(http.StatusCreated, gin.H{
@@ -274,7 +281,7 @@ func SetupRouter(svc *services.Services) *gin.Engine {
 			id := c.Param("id")
 			order, err := svc.GetOrder(id)
 			if err != nil {
-				c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+				apperrors.RespondWithError(c, err)
 				return
 			}
 			c.JSON(http.StatusOK, gin.H{"success": true, "order": order})
@@ -284,7 +291,7 @@ func SetupRouter(svc *services.Services) *gin.Engine {
 			id := c.Param("id")
 			order, err := svc.GetOrder(id)
 			if err != nil {
-				c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+				apperrors.RespondWithError(c, err)
 				return
 			}
 
@@ -329,7 +336,7 @@ func SetupRouter(svc *services.Services) *gin.Engine {
 			id := c.Param("id")
 			updated, err := svc.UpdateOrderStatus(id, models.StatusPreparing)
 			if err != nil {
-				c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+				apperrors.RespondWithError(c, err)
 				return
 			}
 			c.JSON(http.StatusOK, gin.H{"success": true, "order": updated})
@@ -339,7 +346,7 @@ func SetupRouter(svc *services.Services) *gin.Engine {
 			id := c.Param("id")
 			updated, err := svc.UpdateOrderStatus(id, models.StatusReadyForPickup)
 			if err != nil {
-				c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+				apperrors.RespondWithError(c, err)
 				return
 			}
 			c.JSON(http.StatusOK, gin.H{"success": true, "order": updated})
@@ -351,7 +358,7 @@ func SetupRouter(svc *services.Services) *gin.Engine {
 				CourierID string `json:"courierId"`
 			}
 			if err := c.ShouldBindJSON(&body); err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				apperrors.RespondWithError(c, apperrors.NewBadRequest("Invalid assign-courier payload: "+err.Error()))
 				return
 			}
 			if body.CourierID == "" {
@@ -359,7 +366,7 @@ func SetupRouter(svc *services.Services) *gin.Engine {
 			}
 			updated, err := svc.AssignCourier(id, body.CourierID)
 			if err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				apperrors.RespondWithError(c, err)
 				return
 			}
 			c.JSON(http.StatusOK, gin.H{"success": true, "order": updated})
@@ -371,12 +378,12 @@ func SetupRouter(svc *services.Services) *gin.Engine {
 				Barcode string `json:"barcode"`
 			}
 			if err := c.ShouldBindJSON(&body); err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				apperrors.RespondWithError(c, apperrors.NewBadRequest("Invalid pickup payload: "+err.Error()))
 				return
 			}
 			updated, err := svc.ConfirmPickup(id, body.Barcode)
 			if err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				apperrors.RespondWithError(c, err)
 				return
 			}
 			c.JSON(http.StatusOK, gin.H{"success": true, "order": updated})
@@ -388,12 +395,12 @@ func SetupRouter(svc *services.Services) *gin.Engine {
 				Code string `json:"code"` // Pin or Barcode
 			}
 			if err := c.ShouldBindJSON(&body); err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				apperrors.RespondWithError(c, apperrors.NewBadRequest("Invalid delivery confirmation payload: "+err.Error()))
 				return
 			}
 			updated, err := svc.ConfirmDelivery(id, body.Code)
 			if err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				apperrors.RespondWithError(c, err)
 				return
 			}
 			c.JSON(http.StatusOK, gin.H{
@@ -413,7 +420,7 @@ func SetupRouter(svc *services.Services) *gin.Engine {
 			c.ShouldBindJSON(&body)
 			updated, err := svc.DeclineOrder(id, body.Reason)
 			if err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				apperrors.RespondWithError(c, err)
 				return
 			}
 			c.JSON(http.StatusOK, gin.H{"success": true, "order": updated})
@@ -431,7 +438,7 @@ func SetupRouter(svc *services.Services) *gin.Engine {
 			}
 			intent, err := svc.CreateCardIntent(body.Amount, body.Currency)
 			if err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				apperrors.RespondWithError(c, err)
 				return
 			}
 			c.JSON(http.StatusOK, gin.H{"success": true, "intent": intent})
@@ -446,7 +453,7 @@ func SetupRouter(svc *services.Services) *gin.Engine {
 				CustomerID      string `json:"customerId"`
 			}
 			if err := c.ShouldBindJSON(&body); err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				apperrors.RespondWithError(c, apperrors.NewBadRequest("Invalid card payment payload: "+err.Error()))
 				return
 			}
 			if body.CustomerID == "" {
@@ -454,7 +461,7 @@ func SetupRouter(svc *services.Services) *gin.Engine {
 			}
 			cardInfo, err := svc.ConfirmCardPayment(body.PaymentIntentID, body.CardNumber, body.CardHolderName, body.SaveCard, body.CustomerID)
 			if err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				apperrors.RespondWithError(c, err)
 				return
 			}
 			c.JSON(http.StatusOK, gin.H{
@@ -473,7 +480,7 @@ func SetupRouter(svc *services.Services) *gin.Engine {
 				Amount float64 `json:"amount"`
 			}
 			if err := c.ShouldBindJSON(&body); err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				apperrors.RespondWithError(c, apperrors.NewBadRequest("Invalid instant-pay payload: "+err.Error()))
 				return
 			}
 			if body.UserID == "" {
@@ -481,7 +488,7 @@ func SetupRouter(svc *services.Services) *gin.Engine {
 			}
 			res, err := svc.InstantPay(body.UserID, body.Method, body.Amount)
 			if err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				apperrors.RespondWithError(c, err)
 				return
 			}
 			c.JSON(http.StatusOK, res)
@@ -498,7 +505,7 @@ func SetupRouter(svc *services.Services) *gin.Engine {
 			userID := c.Param("userId")
 			user, err := svc.GetWallet(userID)
 			if err != nil {
-				c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+				apperrors.RespondWithError(c, err)
 				return
 			}
 			c.JSON(http.StatusOK, gin.H{
@@ -527,7 +534,7 @@ func SetupRouter(svc *services.Services) *gin.Engine {
 				Amount float64 `json:"amount"`
 			}
 			if err := c.ShouldBindJSON(&body); err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				apperrors.RespondWithError(c, apperrors.NewBadRequest("Invalid deposit payload: "+err.Error()))
 				return
 			}
 			if body.UserID == "" {
@@ -535,7 +542,7 @@ func SetupRouter(svc *services.Services) *gin.Engine {
 			}
 			newBal, err := svc.DepositWallet(body.UserID, body.Amount)
 			if err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				apperrors.RespondWithError(c, err)
 				return
 			}
 			c.JSON(http.StatusOK, gin.H{
@@ -552,7 +559,7 @@ func SetupRouter(svc *services.Services) *gin.Engine {
 				IBAN   string  `json:"iban"`
 			}
 			if err := c.ShouldBindJSON(&body); err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				apperrors.RespondWithError(c, apperrors.NewBadRequest("Invalid withdrawal payload: "+err.Error()))
 				return
 			}
 			if body.UserID == "" {
@@ -560,7 +567,7 @@ func SetupRouter(svc *services.Services) *gin.Engine {
 			}
 			newBal, err := svc.WithdrawWallet(body.UserID, body.Amount, body.IBAN)
 			if err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				apperrors.RespondWithError(c, err)
 				return
 			}
 			c.JSON(http.StatusOK, gin.H{
@@ -603,7 +610,7 @@ func SetupRouter(svc *services.Services) *gin.Engine {
 				Subtotal float64 `json:"subtotal"`
 			}
 			if err := c.ShouldBindJSON(&body); err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				apperrors.RespondWithError(c, apperrors.NewBadRequest("Invalid coin redeem payload: "+err.Error()))
 				return
 			}
 			if body.UserID == "" {
@@ -611,7 +618,7 @@ func SetupRouter(svc *services.Services) *gin.Engine {
 			}
 			discount, err := svc.RedeemCoins(body.UserID, body.Coins, body.Subtotal)
 			if err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				apperrors.RespondWithError(c, err)
 				return
 			}
 			c.JSON(http.StatusOK, gin.H{
@@ -626,7 +633,7 @@ func SetupRouter(svc *services.Services) *gin.Engine {
 			userID := c.DefaultQuery("userId", "user_customer")
 			p, err := svc.GetCustomerProfile(userID)
 			if err != nil {
-				c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+				apperrors.RespondWithError(c, err)
 				return
 			}
 			c.JSON(http.StatusOK, gin.H{"success": true, "profile": p})
@@ -636,12 +643,12 @@ func SetupRouter(svc *services.Services) *gin.Engine {
 			userID := c.DefaultQuery("userId", "user_customer")
 			var addr models.SavedAddress
 			if err := c.ShouldBindJSON(&addr); err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				apperrors.RespondWithError(c, apperrors.NewBadRequest("Invalid address payload: "+err.Error()))
 				return
 			}
 			p, err := svc.AddSavedAddress(userID, addr)
 			if err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				apperrors.RespondWithError(c, err)
 				return
 			}
 			c.JSON(http.StatusCreated, gin.H{"success": true, "profile": p})
@@ -652,7 +659,7 @@ func SetupRouter(svc *services.Services) *gin.Engine {
 			riderID := c.DefaultQuery("riderId", "user_courier")
 			p, err := svc.GetRiderProfile(riderID)
 			if err != nil {
-				c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+				apperrors.RespondWithError(c, err)
 				return
 			}
 			c.JSON(http.StatusOK, gin.H{"success": true, "rider": p})
@@ -664,7 +671,7 @@ func SetupRouter(svc *services.Services) *gin.Engine {
 				IsOnline bool   `json:"isOnline"`
 			}
 			if err := c.ShouldBindJSON(&body); err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				apperrors.RespondWithError(c, apperrors.NewBadRequest("Invalid rider status payload: "+err.Error()))
 				return
 			}
 			if body.RiderID == "" {
@@ -672,7 +679,7 @@ func SetupRouter(svc *services.Services) *gin.Engine {
 			}
 			p, err := svc.ToggleRiderStatus(body.RiderID, body.IsOnline)
 			if err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				apperrors.RespondWithError(c, err)
 				return
 			}
 			c.JSON(http.StatusOK, gin.H{"success": true, "rider": p})
@@ -686,7 +693,7 @@ func SetupRouter(svc *services.Services) *gin.Engine {
 				Heading float64 `json:"heading"`
 			}
 			if err := c.ShouldBindJSON(&body); err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				apperrors.RespondWithError(c, apperrors.NewBadRequest("Invalid rider location payload: "+err.Error()))
 				return
 			}
 			if body.RiderID == "" {
@@ -694,7 +701,7 @@ func SetupRouter(svc *services.Services) *gin.Engine {
 			}
 			loc, err := svc.UpdateRiderLocation(body.RiderID, body.Lat, body.Lng, body.Heading)
 			if err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				apperrors.RespondWithError(c, err)
 				return
 			}
 			c.JSON(http.StatusOK, gin.H{"success": true, "location": loc})
@@ -717,12 +724,12 @@ func SetupRouter(svc *services.Services) *gin.Engine {
 				RatePct float64 `json:"ratePct"`
 			}
 			if err := c.ShouldBindJSON(&body); err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				apperrors.RespondWithError(c, apperrors.NewBadRequest("Invalid commission payload: "+err.Error()))
 				return
 			}
 			newRate, err := svc.SetCommissionRate(body.RatePct)
 			if err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				apperrors.RespondWithError(c, err)
 				return
 			}
 			c.JSON(http.StatusOK, gin.H{"success": true, "commissionPct": newRate})
@@ -741,12 +748,12 @@ func SetupRouter(svc *services.Services) *gin.Engine {
 				Subtotal float64 `json:"subtotal"`
 			}
 			if err := c.ShouldBindJSON(&body); err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				apperrors.RespondWithError(c, apperrors.NewBadRequest("Invalid coupon payload: "+err.Error()))
 				return
 			}
 			discount, err := svc.ValidateCoupon(body.Code, body.Subtotal)
 			if err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				apperrors.RespondWithError(c, err)
 				return
 			}
 			c.JSON(http.StatusOK, gin.H{"success": true, "discountEUR": discount})

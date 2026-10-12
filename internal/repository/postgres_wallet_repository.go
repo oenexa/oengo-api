@@ -3,7 +3,10 @@ package repository
 import (
 	"errors"
 	"fmt"
+	"net/http"
+	"time"
 
+	"oengo-api/internal/apperrors"
 	"oengo-api/internal/models"
 	"gorm.io/gorm"
 )
@@ -24,18 +27,19 @@ func (r *PostgresWalletRepository) GetWalletByUserID(userID string) (*models.Dig
 		return nil, nil
 	}
 	if result.Error != nil {
-		return nil, result.Error
+		return nil, apperrors.WrapDBError("GetWalletByUserID", result.Error)
 	}
 	return &user.DigitalWallet, nil
 }
 
 func (r *PostgresWalletRepository) UpdateWallet(userID string, wallet *models.DigitalWallet) error {
-	return r.db.Model(&models.User{}).Where("id = ?", userID).Updates(map[string]interface{}{
+	err := r.db.Model(&models.User{}).Where("id = ?", userID).Updates(map[string]interface{}{
 		"fiat_balance_eur":   wallet.FiatBalanceEUR,
 		"locked_balance_eur": wallet.LockedBalanceEUR,
-		"loyalty_points":    wallet.LoyaltyPoints,
+		"loyalty_points":     wallet.LoyaltyPoints,
 		"cashback_rate_pct":  wallet.CashbackRatePct,
 	}).Error
+	return apperrors.WrapDBError("UpdateWallet", err)
 }
 
 func (r *PostgresWalletRepository) Transact(entries []models.LedgerEntry) error {
@@ -56,10 +60,19 @@ func (r *PostgresWalletRepository) Transact(entries []models.LedgerEntry) error 
 	// In double-entry bookkeeping, debits must equal credits
 	diff := debitTotal - creditTotal
 	if diff < -0.001 || diff > 0.001 {
-		return fmt.Errorf("double-entry invariant violated: debits (%.2f) != credits (%.2f)", debitTotal, creditTotal)
+		return &apperrors.AppError{
+			HTTPStatus: http.StatusUnprocessableEntity,
+			Code:       apperrors.ErrCodeLedgerImbalance,
+			Message:    fmt.Sprintf("double-entry invariant violated: debits (%.2f) != credits (%.2f)", debitTotal, creditTotal),
+			Details: map[string]interface{}{
+				"debitTotal":  debitTotal,
+				"creditTotal": creditTotal,
+			},
+			Timestamp: time.Now().UTC().Format(time.RFC3339),
+		}
 	}
 
-	return r.db.Transaction(func(tx *gorm.DB) error {
+	err := r.db.Transaction(func(tx *gorm.DB) error {
 		for _, entry := range entries {
 			if err := tx.Create(&entry).Error; err != nil {
 				return err
@@ -67,6 +80,7 @@ func (r *PostgresWalletRepository) Transact(entries []models.LedgerEntry) error 
 		}
 		return nil
 	})
+	return apperrors.WrapDBError("WalletTransact", err)
 }
 
 func (r *PostgresWalletRepository) GetLedgerEntries(limit int) ([]models.LedgerEntry, error) {
@@ -75,5 +89,5 @@ func (r *PostgresWalletRepository) GetLedgerEntries(limit int) ([]models.LedgerE
 	}
 	var entries []models.LedgerEntry
 	err := r.db.Order("created_at desc").Limit(limit).Find(&entries).Error
-	return entries, err
+	return entries, apperrors.WrapDBError("GetLedgerEntries", err)
 }

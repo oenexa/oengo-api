@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strings"
 
+	"oengo-api/internal/apperrors"
 	"oengo-api/internal/models"
 	"gorm.io/gorm"
 )
@@ -30,7 +31,7 @@ func (r *PostgresRestaurantRepository) ListRestaurants(cuisine, search string) (
 
 	var list []*models.Restaurant
 	err := query.Find(&list).Error
-	return list, err
+	return list, apperrors.WrapDBError("ListRestaurants", err)
 }
 
 func (r *PostgresRestaurantRepository) GetRestaurantByID(id string) (*models.Restaurant, error) {
@@ -39,33 +40,34 @@ func (r *PostgresRestaurantRepository) GetRestaurantByID(id string) (*models.Res
 	if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 		return nil, nil
 	}
-	return &rest, result.Error
+	return &rest, apperrors.WrapDBError("GetRestaurantByID", result.Error)
 }
 
 func (r *PostgresRestaurantRepository) CreateRestaurant(rest *models.Restaurant) error {
-	return r.db.Create(rest).Error
+	return apperrors.WrapDBError("CreateRestaurant", r.db.Create(rest).Error)
 }
 
 func (r *PostgresRestaurantRepository) UpdateRestaurant(rest *models.Restaurant) error {
-	return r.db.Save(rest).Error
+	return apperrors.WrapDBError("UpdateRestaurant", r.db.Save(rest).Error)
 }
 
 func (r *PostgresRestaurantRepository) GetMenu(restaurantID string) ([]models.MenuItem, error) {
 	var items []models.MenuItem
 	err := r.db.Where("restaurant_id = ?", restaurantID).Find(&items).Error
-	return items, err
+	return items, apperrors.WrapDBError("GetMenu", err)
 }
 
 func (r *PostgresRestaurantRepository) AddDish(restaurantID string, item *models.MenuItem) error {
 	item.RestaurantID = restaurantID
-	return r.db.Create(item).Error
+	return apperrors.WrapDBError("AddDish", r.db.Create(item).Error)
 }
 
 func (r *PostgresRestaurantRepository) UpdateDish(restaurantID string, item *models.MenuItem) error {
 	item.RestaurantID = restaurantID
-	return r.db.Save(item).Error
+	return apperrors.WrapDBError("UpdateDish", r.db.Save(item).Error)
 }
 
 func (r *PostgresRestaurantRepository) DeleteDish(restaurantID, itemID string) error {
-	return r.db.Where("id = ? AND restaurant_id = ?", itemID, restaurantID).Delete(&models.MenuItem{}).Error
+	err := r.db.Where("id = ? AND restaurant_id = ?", itemID, restaurantID).Delete(&models.MenuItem{}).Error
+	return apperrors.WrapDBError("DeleteDish", err)
 }
