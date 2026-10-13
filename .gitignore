@@ -1,4 +1,31 @@
+# Binaries & build artifacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+bin/
+dist/
+build/
+
+# Test binaries and coverage
+*.test
+*.out
+coverage.txt
+coverage.html
+
+# Dependencies & Vendor
+vendor/
 node_modules/
+
+# Environment & Secrets
 .env
+.env.local
+
+# IDE & OS
+.idea/
+.vscode/
+*.iml
 .DS_Store
+Thumbs.db
 *.log
