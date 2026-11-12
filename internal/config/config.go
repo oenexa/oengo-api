@@ -12,7 +12,7 @@ type Config struct {
 	DefaultCommissionPct float64
 	MinCommissionPct     float64
 	MaxCommissionPct     float64
-	OenEurExchangeRate   float64
+	OnxcEurExchangeRate  float64
 	LegacyAggregatorFee  float64
 }
 
@@ -46,7 +46,7 @@ func LoadConfig() *Config {
 		DefaultCommissionPct: commPct,
 		MinCommissionPct:     0.0,
 		MaxCommissionPct:     30.0,
-		OenEurExchangeRate:   13.60,
+		OnxcEurExchangeRate:  13.60,
 		LegacyAggregatorFee:  30.0,
 	}
 }

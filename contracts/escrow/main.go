@@ -31,9 +31,9 @@ type EscrowOrder struct {
 	Buyer             string      `json:"buyer"`
 	Restaurant        string      `json:"restaurant"`
 	Courier           string      `json:"courier"`
-	Amount            uint64      `json:"amount"`              // Food subtotal in OEN
-	DeliveryFee       uint64      `json:"delivery_fee"`        // Delivery fee in OEN
-	Tip               uint64      `json:"tip"`                 // Courier tip in OEN
+	Amount            uint64      `json:"amount"`              // Food subtotal in ONXC
+	DeliveryFee       uint64      `json:"delivery_fee"`        // Delivery fee in ONXC
+	Tip               uint64      `json:"tip"`                 // Courier tip in ONXC
 	TotalLocked       uint64      `json:"total_locked"`        // Total funds locked in contract
 	CommissionRatePct uint64      `json:"commission_rate_pct"` // Commission percentage locked for this order
 	Status            OrderStatus `json:"status"`
@@ -109,7 +109,7 @@ func Call(method string, paramsJSON string) (string, error) {
 		}
 		contractState[params.ID] = order
 
-		return fmt.Sprintf("Order %s created and %d OEN locked in escrow (Commission: %d%%)", params.ID, total, commissionRate), nil
+		return fmt.Sprintf("Order %s created and %d ONXC locked in escrow (Commission: %d%%)", params.ID, total, commissionRate), nil
 
 	case "acceptOrder":
 		var params struct {
@@ -210,7 +210,7 @@ func Call(method string, paramsJSON string) (string, error) {
 		order.SettledAt = time.Now().Unix()
 		contractState[params.ID] = order
 
-		return fmt.Sprintf("Order %s delivered! Escrow settled: %d OEN to Restaurant (%s), %d OEN to Courier (%s)",
+		return fmt.Sprintf("Order %s delivered! Escrow settled: %d ONXC to Restaurant (%s), %d ONXC to Courier (%s)",
 			params.ID, restaurantCut, order.Restaurant, courierCut, order.Courier), nil
 
 	case "setCommissionRate":
@@ -249,7 +249,7 @@ func Call(method string, paramsJSON string) (string, error) {
 		order.SettledAt = time.Now().Unix()
 		contractState[params.ID] = order
 
-		return fmt.Sprintf("Order %s refunded 100%% (%d OEN) to Buyer (%s). Reason: %s",
+		return fmt.Sprintf("Order %s refunded 100%% (%d ONXC) to Buyer (%s). Reason: %s",
 			params.ID, order.TotalLocked, order.Buyer, params.Reason), nil
 
 	case "getOrder":

@@ -66,4 +66,20 @@ func TestAuthAndKYC(t *testing.T) {
 	if rider.KYCStatus != "VERIFIED" {
 		t.Fatalf("Expected Rider Profile KYC VERIFIED, got %s", rider.KYCStatus)
 	}
+
+	// Verify Admin role cannot be self-assigned during public registration or OAuth
+	_, err = svc.RegisterUser(services.RegisterRequest{
+		Name:     "Attacker",
+		Email:    "attacker@example.com",
+		Password: "password123",
+		Role:     models.RoleAdmin,
+	})
+	if err == nil {
+		t.Fatalf("Expected error when attempting to self-assign ADMIN role on register")
+	}
+
+	_, err = svc.LoginOrRegisterOAuth("Attacker", "oauth-attacker@example.com", "GOOGLE", "sub-123", models.RoleAdmin)
+	if err == nil {
+		t.Fatalf("Expected error when attempting to self-assign ADMIN role via OAuth")
+	}
 }

@@ -1,15 +1,19 @@
 package handlers
 
 import (
+	"crypto/subtle"
 	"fmt"
 	"net/http"
+	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 
 	"oengo-api/internal/apperrors"
+	"oengo-api/internal/auth"
 	"oengo-api/internal/models"
 	"oengo-api/internal/services"
 )
@@ -22,9 +26,28 @@ type Router struct {
 func SetupRouter(svc *services.Services) *gin.Engine {
 	r := gin.Default()
 
-	// CORS Setup
+	// CORS Setup (explicit origin allowlist instead of wildcard AllowAllOrigins)
+	allowedOrigins := []string{
+		"https://app.oenexa.com",
+		"https://oengo.oenexa.com",
+		"https://oenexa.com",
+		"http://localhost:3000",
+		"http://127.0.0.1:3000",
+	}
+	if rawOrigins := strings.TrimSpace(os.Getenv("CORS_ALLOWED_ORIGINS")); rawOrigins != "" {
+		var custom []string
+		for _, o := range strings.Split(rawOrigins, ",") {
+			if trimmed := strings.TrimSpace(o); trimmed != "" {
+				custom = append(custom, trimmed)
+			}
+		}
+		if len(custom) > 0 {
+			allowedOrigins = custom
+		}
+	}
 	config := cors.DefaultConfig()
-	config.AllowAllOrigins = true
+	config.AllowOrigins = allowedOrigins
+	config.AllowCredentials = true
 	config.AllowMethods = []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"}
 	config.AllowHeaders = []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Requested-With", "X-Request-ID"}
 	config.ExposeHeaders = []string{"X-Request-ID"}
@@ -33,6 +56,9 @@ func SetupRouter(svc *services.Services) *gin.Engine {
 	// Enterprise Correlation ID & Panic/Error Recovery Middleware
 	r.Use(apperrors.RequestIDMiddleware())
 	r.Use(apperrors.ErrorHandlingMiddleware())
+	if strings.TrimSpace(os.Getenv("OENEXA_JWKS_URL")) != "" {
+		r.Use(auth.OenexaSSOMiddleware(auth.NewJWKSVerifierFromEnv(), false))
+	}
 
 	// Health check (supports GET and HEAD)
 	r.Match([]string{"GET", "HEAD"}, "/health", func(c *gin.Context) {
@@ -112,6 +138,12 @@ func SetupRouter(svc *services.Services) *gin.Engine {
 		})
 
 		api.POST("/admin/kyc/:userId/approve", func(c *gin.Context) {
+			expectedToken := os.Getenv("OENGO_INTERNAL_ADMIN_TOKEN")
+			providedToken := c.GetHeader("X-Internal-Admin-Token")
+			if expectedToken == "" || subtle.ConstantTimeCompare([]byte(providedToken), []byte(expectedToken)) != 1 {
+				apperrors.RespondWithError(c, apperrors.NewForbidden("valid X-Internal-Admin-Token is required for admin KYC approval"))
+				return
+			}
 			userID := c.Param("userId")
 			user, err := svc.ApproveKYC(userID)
 			if err != nil {
@@ -125,7 +157,7 @@ func SetupRouter(svc *services.Services) *gin.Engine {
 		api.POST("/kyc/customer/verify", func(c *gin.Context) {
 			var body struct {
 				UserID    string `json:"userId"`
-				Tier      int    `json:"tier"` // 1: EUR <150, 2: Full Crypto OEN & High Balance
+				Tier      int    `json:"tier"` // 1: EUR <150, 2: Full Crypto ONXC & High Balance
 				DocType   string `json:"docType"`
 				DocNumber string `json:"docNumber"`
 			}
@@ -520,9 +552,9 @@ func SetupRouter(svc *services.Services) *gin.Engine {
 						"type":          "DOUBLE_ENTRY_LEDGER_BALANCE",
 					},
 					"crypto": gin.H{
-						"address":    user.CryptoWalletAddress,
-						"balanceOEN": "100.00",
-						"type":       "NON_CUSTODIAL_ML_DSA_65",
+						"address":     user.CryptoWalletAddress,
+						"balanceONXC": "100.00",
+						"type":        "NON_CUSTODIAL_ML_DSA_65",
 					},
 				},
 			})

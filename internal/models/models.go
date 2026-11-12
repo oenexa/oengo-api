@@ -69,7 +69,7 @@ type MenuItem struct {
 	Name              string               `json:"name" gorm:"type:varchar(255);not null"`
 	Description       string               `json:"description" gorm:"type:text"`
 	PriceEUR          float64              `json:"priceEUR" gorm:"type:numeric(10,2);not null"`
-	PriceOEN          string               `json:"priceOEN" gorm:"type:varchar(50)"`
+	PriceONXC         string               `json:"priceONXC" gorm:"type:varchar(50)"`
 	InStock           bool                 `json:"inStock" gorm:"default:true"`
 	StockQuantity     int                  `json:"stockQuantity" gorm:"default:20"`
 	LowStockThreshold int                  `json:"lowStockThreshold" gorm:"default:5"`

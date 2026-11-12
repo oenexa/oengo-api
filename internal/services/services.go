@@ -1,16 +1,19 @@
 package services
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
 	"log"
 	"math"
+	"os"
 	"strings"
 	"time"
 
 	"oengo-api/internal/apperrors"
 	"oengo-api/internal/config"
+	"oengo-api/internal/integration"
 	"oengo-api/internal/models"
 	"oengo-api/internal/store"
 )
@@ -19,12 +22,17 @@ type Services struct {
 	Store    *store.Store
 	Cfg      *config.Config
 	Notifier *NotificationService
+	Bridge   *integration.OenexaCoreBridge
 }
 
 func NewServices(s *store.Store, cfg *config.Config) *Services {
-	// Initialize the Notification Service (with mock keys for now)
-	notifier := NewNotificationService("SG.MockKey123", "ACMockTwilioSID", "MockTwilioAuth")
-	return &Services{Store: s, Cfg: cfg, Notifier: notifier}
+	notifier := NewNotificationService(
+		os.Getenv("SENDGRID_API_KEY"),
+		os.Getenv("TWILIO_ACCOUNT_SID"),
+		os.Getenv("TWILIO_AUTH_TOKEN"),
+	)
+	bridge := integration.NewOenexaCoreBridgeFromEnv()
+	return &Services{Store: s, Cfg: cfg, Notifier: notifier, Bridge: bridge}
 }
 
 // ── RESTAURANT SERVICE ──────────────────────────────────────────────────────
@@ -151,7 +159,7 @@ func (svc *Services) AddDish(restaurantID string, item models.MenuItem) (*models
 
 	item.ID = fmt.Sprintf("menu_%d", time.Now().UnixMilli())
 	item.RestaurantID = restaurantID
-	item.PriceOEN = fmt.Sprintf("%.2f", item.PriceEUR/svc.Cfg.OenEurExchangeRate)
+	item.PriceONXC = fmt.Sprintf("%.2f", item.PriceEUR/svc.Cfg.OnxcEurExchangeRate)
 	item.InStock = true
 	if item.StockQuantity == 0 {
 		item.StockQuantity = 20
@@ -183,7 +191,7 @@ func (svc *Services) UpdateDish(restaurantID, itemID string, inStock *bool, pric
 			}
 			if price != nil && *price > 0 {
 				menu[i].PriceEUR = *price
-				menu[i].PriceOEN = fmt.Sprintf("%.2f", *price/svc.Cfg.OenEurExchangeRate)
+				menu[i].PriceONXC = fmt.Sprintf("%.2f", *price/svc.Cfg.OnxcEurExchangeRate)
 			}
 			if stockQty != nil {
 				menu[i].StockQuantity = *stockQty
@@ -297,6 +305,26 @@ func (svc *Services) CreateOrder(req CreateOrderRequest) (*models.Order, error) 
 	go func() {
 		if err := svc.Store.RecordLedgerTx(orderID, "1001", "1003", total, fmt.Sprintf("Order %s escrow lock", orderID)); err != nil {
 			log.Printf("[LEDGER_ERROR] failed to record escrow lock for order %s: %v", orderID, err)
+		}
+		if svc.Bridge != nil && svc.Bridge.Enabled() {
+			ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+			defer cancel()
+			if _, err := svc.Bridge.AuthorizeOrderPayment(ctx, integration.PaymentIntentRequest{
+				UserID:         order.BuyerID,
+				OrderID:        orderID,
+				Amount:         total,
+				Currency:       "EUR",
+				Rail:           req.PaymentMethod,
+				IdempotencyKey: "oengo-order-" + orderID,
+			}, orderID); err != nil {
+				log.Printf("[BRIDGE_WARN] core payment intent sync failed for order %s: %v", orderID, err)
+			}
+			_ = svc.Bridge.DispatchNotification(ctx, integration.NotificationEvent{
+				EventType:     "oengo.order.placed",
+				SubjectUserID: order.BuyerID,
+				Subject:       fmt.Sprintf("OENGO Order %s Confirmed", orderID),
+				Body:          fmt.Sprintf("Your order %s (total %.2f EUR via %s) is awaiting restaurant confirmation.", orderID, total, req.PaymentMethod),
+			}, orderID)
 		}
 	}()
 
@@ -732,6 +760,22 @@ func (svc *Services) InstantPay(userID, method string, amount float64) (map[stri
 		go func() {
 			if err := svc.Store.RecordLedgerTx(txID, "1002", "1001", amount, "Instant 1-Click Pay debit"); err != nil {
 				log.Printf("[LEDGER_ERROR] failed to record instant pay for user %s: %v", userID, err)
+			}
+		}()
+	}
+	if svc.Bridge != nil && svc.Bridge.Enabled() {
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+			defer cancel()
+			if _, err := svc.Bridge.AuthorizeOrderPayment(ctx, integration.PaymentIntentRequest{
+				UserID:         userID,
+				OrderID:        txID,
+				Amount:         amount,
+				Currency:       "EUR",
+				Rail:           method,
+				IdempotencyKey: "oengo-inst-" + txID,
+			}, txID); err != nil {
+				log.Printf("[BRIDGE_WARN] core instant pay sync failed for tx %s: %v", txID, err)
 			}
 		}()
 	}

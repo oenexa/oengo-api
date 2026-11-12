@@ -40,6 +40,12 @@ func (svc *Services) RegisterUser(req RegisterRequest) (*models.BankingUser, err
 	if len(req.Password) < 6 {
 		return nil, apperrors.NewValidation("password", "password must be at least 6 characters")
 	}
+	if req.Role == models.RoleAdmin {
+		return nil, apperrors.NewForbidden("admin role cannot be self-assigned during public registration")
+	}
+	if req.Role == "" {
+		req.Role = models.RoleCustomer
+	}
 
 	// 1. Check if email exists
 	if svc.Store.DB != nil {
@@ -69,7 +75,7 @@ func (svc *Services) RegisterUser(req RegisterRequest) (*models.BankingUser, err
 	// Under EU Anti-Money Laundering (AMLD5) & PSD2 regulations:
 	// Business accounts (RESTAURANT) and financial participants (COURIER) MUST be verified via KYC.
 	kycStatus := "PENDING"
-	if req.Role == models.RoleCustomer || req.Role == models.RoleAdmin {
+	if req.Role == models.RoleCustomer {
 		kycStatus = "VERIFIED"
 	}
 
@@ -192,6 +198,15 @@ func (svc *Services) LoginOrRegisterOAuth(name, email, provider, providerID stri
 	if email == "" || !strings.Contains(email, "@") {
 		return nil, apperrors.NewValidation("email", "valid OAuth email is required")
 	}
+	if strings.TrimSpace(provider) == "" || strings.TrimSpace(providerID) == "" {
+		return nil, apperrors.NewValidation("provider", "verified OAuth provider and providerId are required")
+	}
+	if role == models.RoleAdmin {
+		return nil, apperrors.NewForbidden("admin role cannot be self-assigned via oauth")
+	}
+	if role == "" {
+		role = models.RoleCustomer
+	}
 	if name == "" {
 		name = "Verified OENGO User"
 	}
@@ -217,7 +232,7 @@ func (svc *Services) LoginOrRegisterOAuth(name, email, provider, providerID stri
 		now := time.Now().UTC()
 		kycStatus := "PENDING"
 		kycTier := 0
-		if role == models.RoleCustomer || role == models.RoleAdmin {
+		if role == models.RoleCustomer {
 			kycStatus = "VERIFIED"
 			kycTier = 1
 		}

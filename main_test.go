@@ -231,3 +231,44 @@ func TestRiderAndAdminDashboard(t *testing.T) {
 		t.Fatalf("admin dashboard failed: %d", wAdmin.Code)
 	}
 }
+
+func TestAdminKYCGuardAndCORS(t *testing.T) {
+	router, _ := setupTestApp()
+
+	// 1. Missing internal admin token must return 403 Forbidden
+	reqNoTok, _ := http.NewRequest("POST", "/api/admin/kyc/user_courier/approve", nil)
+	wNoTok := httptest.NewRecorder()
+	router.Engine.ServeHTTP(wNoTok, reqNoTok)
+	if wNoTok.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 when admin token missing, got %d", wNoTok.Code)
+	}
+
+	// 2. Valid internal admin token succeeds
+	t.Setenv("OENGO_INTERNAL_ADMIN_TOKEN", "wave0-admin-secret")
+	reqValid, _ := http.NewRequest("POST", "/api/admin/kyc/user_courier/approve", nil)
+	reqValid.Header.Set("X-Internal-Admin-Token", "wave0-admin-secret")
+	wValid := httptest.NewRecorder()
+	router.Engine.ServeHTTP(wValid, reqValid)
+	if wValid.Code != http.StatusOK {
+		t.Fatalf("expected 200 with valid internal admin token, got %d: %s", wValid.Code, wValid.Body.String())
+	}
+
+	// 3. Disallowed CORS origin is not reflected; allowed portal origin is permitted
+	reqBadOrigin, _ := http.NewRequest("OPTIONS", "/health", nil)
+	reqBadOrigin.Header.Set("Origin", "https://evil.example")
+	reqBadOrigin.Header.Set("Access-Control-Request-Method", "GET")
+	wBadOrigin := httptest.NewRecorder()
+	router.Engine.ServeHTTP(wBadOrigin, reqBadOrigin)
+	if wBadOrigin.Header().Get("Access-Control-Allow-Origin") != "" {
+		t.Fatalf("expected evil origin to be rejected, got %q", wBadOrigin.Header().Get("Access-Control-Allow-Origin"))
+	}
+
+	reqGoodOrigin, _ := http.NewRequest("OPTIONS", "/health", nil)
+	reqGoodOrigin.Header.Set("Origin", "https://app.oenexa.com")
+	reqGoodOrigin.Header.Set("Access-Control-Request-Method", "GET")
+	wGoodOrigin := httptest.NewRecorder()
+	router.Engine.ServeHTTP(wGoodOrigin, reqGoodOrigin)
+	if wGoodOrigin.Header().Get("Access-Control-Allow-Origin") != "https://app.oenexa.com" {
+		t.Fatalf("expected allowed origin https://app.oenexa.com, got %q", wGoodOrigin.Header().Get("Access-Control-Allow-Origin"))
+	}
+}

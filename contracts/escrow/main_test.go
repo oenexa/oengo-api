@@ -32,7 +32,7 @@ func TestEscrowCompleteLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("createOrder failed: %v", err)
 	}
-	if !strings.Contains(res, "1150 OEN locked") {
+	if !strings.Contains(res, "1150 ONXC locked") {
 		t.Errorf("expected 1150 total locked, got %s", res)
 	}
 
@@ -103,10 +103,10 @@ func TestEscrowCompleteLifecycle(t *testing.T) {
 	}
 	// 95% of 1000 = 950 to Restaurant.
 	// (1000 - 950) + 100 fee + 50 tip = 200 to Courier.
-	if !strings.Contains(res, "950 OEN to Restaurant") {
+	if !strings.Contains(res, "950 ONXC to Restaurant") {
 		t.Errorf("expected 950 to Restaurant, got %s", res)
 	}
-	if !strings.Contains(res, "200 OEN to Courier") {
+	if !strings.Contains(res, "200 ONXC to Courier") {
 		t.Errorf("expected 200 to Courier, got %s", res)
 	}
 
@@ -158,7 +158,7 @@ func TestEscrowRefundFlow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("refundOrder failed: %v", err)
 	}
-	if !strings.Contains(res, "refunded 100% (550 OEN)") {
+	if !strings.Contains(res, "refunded 100% (550 ONXC)") {
 		t.Errorf("unexpected refund response: %s", res)
 	}
 }
@@ -224,11 +224,11 @@ func TestEscrowConfigurableCommission(t *testing.T) {
 	if err != nil {
 		t.Fatalf("confirmDelivery failed: %v", err)
 	}
-	if !strings.Contains(res, "900 OEN to Restaurant") {
-		t.Errorf("expected 900 OEN to Restaurant, got %s", res)
+	if !strings.Contains(res, "900 ONXC to Restaurant") {
+		t.Errorf("expected 900 ONXC to Restaurant, got %s", res)
 	}
-	if !strings.Contains(res, "250 OEN to Courier") {
-		t.Errorf("expected 250 OEN to Courier, got %s", res)
+	if !strings.Contains(res, "250 ONXC to Courier") {
+		t.Errorf("expected 250 ONXC to Courier, got %s", res)
 	}
 
 	// 5. Test 0% Promotional Commission Override on specific order
@@ -266,11 +266,11 @@ func TestEscrowConfigurableCommission(t *testing.T) {
 	if err != nil {
 		t.Fatalf("confirmDelivery with 0%% commission failed: %v", err)
 	}
-	if !strings.Contains(res, "1000 OEN to Restaurant") {
-		t.Errorf("expected 1000 OEN (100%%) to Restaurant, got %s", res)
+	if !strings.Contains(res, "1000 ONXC to Restaurant") {
+		t.Errorf("expected 1000 ONXC (100%%) to Restaurant, got %s", res)
 	}
-	if !strings.Contains(res, "150 OEN to Courier") {
-		t.Errorf("expected 150 OEN to Courier, got %s", res)
+	if !strings.Contains(res, "150 ONXC to Courier") {
+		t.Errorf("expected 150 ONXC to Courier, got %s", res)
 	}
 
 	// Reset default commission back to 5% for clean state
