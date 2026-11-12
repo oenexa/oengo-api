@@ -1,0 +1,99 @@
+name: OENGO API CI/CD
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  quality-and-tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go 1.26
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache-dependency-path: go.sum
+
+      - name: Go Vet
+        run: go vet ./...
+
+      - name: Run Go Tests
+        run: go test -v ./...
+
+  build-and-push:
+    needs: quality-and-tests
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    if: github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push OENGO API Image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-24.04
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Deploy to VPS
+        uses: appleboy/ssh-action@v1.2.5
+        env:
+          SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+        if: env.SSH_KEY != ''
+        with:
+          host: ${{ secrets.SERVER_HOST || '62.210.92.60' }}
+          username: ${{ secrets.SERVER_USER || 'ubuntu' }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: 22
+          timeout: 60s
+          command_timeout: 10m
+          script: |
+            set -e
+            echo "Deploying OENGO API on VPS (62.210.92.60)..."
+            if [ -d "/opt/oenexa/src/oengo-api" ]; then
+              cd /opt/oenexa/src/oengo-api
+              git fetch origin main
+              git reset --hard origin/main
+            fi
+            cd /opt/oenexa
+            if docker compose config --services | grep -qx "oengo-api"; then
+              docker compose build oengo-api
+              docker compose up -d --no-deps oengo-api
+              docker compose ps oengo-api
+            else
+              echo "oengo-api service not enabled in /opt/oenexa/docker-compose.yml; source synced only."
+            fi
+
+      - name: Report missing SSH secret
+        env:
+          SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+        if: env.SSH_KEY == ''
+        run: echo "::warning::SERVER_SSH_KEY secret is not configured in this repository. Skipping automatic SSH deployment to VPS."
