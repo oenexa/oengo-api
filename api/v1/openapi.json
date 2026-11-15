@@ -1,0 +1,134 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "OENGO Quick-Commerce & Logistics API",
+    "version": "1.0.0",
+    "description": "On-demand food, grocery, merchant order management, and driver dispatch API."
+  },
+  "servers": [
+    {
+      "url": "https://app.oenexa.com/api/oengo",
+      "description": "OENGO Commerce Gateway"
+    }
+  ],
+  "paths": {
+    "/v1/orders": {
+      "post": {
+        "summary": "Place Customer Delivery Order",
+        "operationId": "placeOrder",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomerOrderRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Order created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerOrderResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/orders/{orderId}": {
+      "get": {
+        "summary": "Get Order and Delivery Status",
+        "operationId": "getOrder",
+        "parameters": [
+          { "name": "orderId", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Order status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerOrderResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/drivers/{driverId}/telemetry": {
+      "post": {
+        "summary": "Stream Driver GPS Telemetry",
+        "operationId": "updateDriverLocation",
+        "parameters": [
+          { "name": "driverId", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DriverLocationPayload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Location ingested" }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CustomerOrderRequest": {
+        "type": "object",
+        "properties": {
+          "customerId": { "type": "string" },
+          "merchantId": { "type": "string" },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "productId": { "type": "string" },
+                "quantity": { "type": "integer" },
+                "price": { "type": "number" }
+              },
+              "required": ["productId", "quantity", "price"]
+            }
+          },
+          "deliveryAddress": { "type": "string" },
+          "paymentMethod": { "type": "string", "enum": ["ONXC", "CARD", "WALLET"] }
+        },
+        "required": ["customerId", "merchantId", "items", "deliveryAddress"]
+      },
+      "CustomerOrderResponse": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "status": { "type": "string", "enum": ["PLACED", "ACCEPTED", "PREPARING", "DISPATCHED", "DELIVERED"] },
+          "total": { "type": "number" },
+          "estimatedDeliveryMinutes": { "type": "integer" }
+        },
+        "required": ["id", "status", "total"]
+      },
+      "DriverLocationPayload": {
+        "type": "object",
+        "properties": {
+          "latitude": { "type": "number" },
+          "longitude": { "type": "number" },
+          "heading": { "type": "number" },
+          "speed": { "type": "number" },
+          "timestamp": { "type": "string" }
+        },
+        "required": ["latitude", "longitude"]
+      }
+    }
+  }
+}

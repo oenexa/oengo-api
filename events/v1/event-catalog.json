@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "domain": "com.oengo.commerce",
+  "version": "1.0.0",
+  "events": [
+    {
+      "type": "com.oengo.order.placed.v1",
+      "description": "Emitted when a customer places an order",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "type": { "type": "string" },
+          "data": {
+            "type": "object",
+            "properties": {
+              "orderId": { "type": "string" },
+              "customerId": { "type": "string" },
+              "merchantId": { "type": "string" },
+              "total": { "type": "number" }
+            },
+            "required": ["orderId", "customerId", "merchantId", "total"]
+          }
+        }
+      }
+    },
+    {
+      "type": "com.oengo.delivery.dispatched.v1",
+      "description": "Emitted when a courier accepts and picks up an order",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "type": { "type": "string" },
+          "data": {
+            "type": "object",
+            "properties": {
+              "orderId": { "type": "string" },
+              "driverId": { "type": "string" },
+              "pickupTime": { "type": "string" }
+            },
+            "required": ["orderId", "driverId"]
+          }
+        }
+      }
+    }
+  ]
+}
