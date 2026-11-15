@@ -1,0 +1,7 @@
+﻿# Global ownership for oengo-api
+* @oenexa/core-architects @oenexa/domain-maintainers
+
+# Security critical configurations
+/security/ @oenexa/security-architects
+/deploy/ @oenexa/devops-architects
+/adr/ @oenexa/architecture-board
