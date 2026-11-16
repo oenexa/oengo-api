@@ -1,0 +1,43 @@
+# ==============================================================================
+# OenGo Quick Commerce & Escrow API — Standalone Local Stack
+# Usage: docker compose up -d --build
+# ==============================================================================
+
+version: "3.8"
+
+services:
+  oengo-db:
+    image: postgres:16-alpine
+    container_name: oengo-db-standalone
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-oenexa_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-oenexa_secure_pass}
+      POSTGRES_DB: ${POSTGRES_DB:-oengo_prod}
+    ports:
+      - "5432:5432"
+    volumes:
+      - oengo_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-oenexa_admin} -d ${POSTGRES_DB:-oengo_prod}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  oengo-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: oengo-api-standalone
+    ports:
+      - "3001:3001"
+    environment:
+      PORT: "3001"
+      DATABASE_DSN: "host=oengo-db user=${POSTGRES_USER:-oenexa_admin} password=${POSTGRES_PASSWORD:-oenexa_secure_pass} dbname=${POSTGRES_DB:-oengo_prod} port=5432 sslmode=disable"
+      OENEXA_RPC_URL: ${OENEXA_RPC_URL:-http://host.docker.internal:8545}
+    depends_on:
+      oengo-db:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  oengo_db_data:
